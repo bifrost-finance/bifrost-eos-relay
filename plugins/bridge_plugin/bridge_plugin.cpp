@@ -7,7 +7,32 @@
 #include <fc/log/logger_config.hpp>
 
 namespace eosio {
+   using boost::multi_index_container;
+   using namespace boost::multi_index;
+
    static appbase::abstract_plugin &_bridge_plugin = app().register_plugin<bridge_plugin>();
+
+   typedef multi_index_container<
+           bridge_blocks,
+           indexed_by<
+                   ordered_unique<
+                           tag<by_id>,
+                           member<bridge_blocks,
+                                   block_id_type,
+                                   &bridge_blocks::id> >
+           >
+   > bridge_block_index;
+
+   typedef multi_index_container<
+           bridge_change_schedule,
+           indexed_by<
+                   ordered_unique<
+                           tag<by_id>,
+                           member<bridge_change_schedule,
+                                   block_id_type,
+                                   &bridge_change_schedule::id> >
+           >
+   > bridge_change_schedule_index;
 
    class bridge_plugin_impl {
    public:
@@ -20,6 +45,9 @@ namespace eosio {
       boost::asio::steady_timer::duration block_timeout{std::chrono::milliseconds{1000}};
       boost::asio::steady_timer::duration change_schedule_timeout{std::chrono::milliseconds{1000}};
       boost::asio::steady_timer::duration prove_action_timeout{std::chrono::milliseconds{1000}};
+
+      bridge_block_index block_index;
+      bridge_change_schedule_index change_schedule_index;
 
       void block_timer_tick();
 
