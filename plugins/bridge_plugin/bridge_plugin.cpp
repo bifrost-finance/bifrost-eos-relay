@@ -1,9 +1,9 @@
-#include <eosio/chain/types.hpp>
-
 #include <eosio/bridge_plugin/bridge_plugin.hpp>
-#include <eosio/chain/block.hpp>
 #include <eosio/chain/exceptions.hpp>
+
+#include <boost/multi_index_container.hpp>
 #include <boost/asio/steady_timer.hpp>
+
 #include <fc/log/logger_config.hpp>
 
 namespace eosio {
@@ -56,6 +56,7 @@ namespace eosio {
       void prove_action_timer_tick();
 
       void irreversible_block(const chain::block_state_ptr &);
+      void applied_transaction(std::tuple<const transaction_trace_ptr &, const signed_transaction &>);
    };
 
    void bridge_plugin_impl::block_timer_tick() {
@@ -101,8 +102,52 @@ namespace eosio {
    }
 
    void bridge_plugin_impl::irreversible_block(const chain::block_state_ptr &block) {
-      ilog("signaled, block: ${n}, id: ${id}", ("n", block->block_num)("id", block->id));
       // TODO read blocks info to local storage
+      ilog("irreversible_block: ${n}, id: ${id}", ("n", block->block_num)("id", block->id));
+      auto bb = bridge_blocks{block->id, *block};
+
+      // record block
+      uint64_t block_index_max_size = 10;
+      if (block_index.size() >= block_index_max_size) {
+         block_index.erase(block_index.begin());
+      }
+      block_index.insert(bb);
+
+      // check if block has new producers
+      auto blk = block->block;
+      if (blk->new_producers) {
+         ilog("blk.new_producers: ${np}", ("np", blk->new_producers));
+         auto cs = bridge_change_schedule{
+                 block->id,
+                 block->blockroot_merkle,
+                 std::vector<signed_block_header>(),
+                 std::vector<std::vector<block_id_type>>(),
+                 0,
+         };
+         change_schedule_index.insert(cs);
+      }
+
+      ilog("block_index size: ${bi}", ("bi", block_index.size()));
+   }
+
+   void bridge_plugin_impl::applied_transaction(std::tuple<const transaction_trace_ptr &, const signed_transaction &> t) {
+      auto tt = std::get<0>(t);
+      ilog("applied_transaction => transaction_trace_ptr: ${tt},", ("tt", tt));
+
+      std::vector<action_receipt> act_receipts;
+      auto action_traces = tt->action_traces;
+      for (auto &at : action_traces) {
+         // TODO check if has withdraw/deposite transaction
+         auto action = at.act;
+
+         auto receipt = at.receipt;
+         if (receipt) {
+            act_receipts.push_back(*receipt);
+         }
+      }
+
+      // TODO get merkle path
+
    }
 
    bridge_plugin::bridge_plugin() : my(new bridge_plugin_impl()) {}
@@ -127,6 +172,7 @@ namespace eosio {
          my->chain_plug = app().find_plugin<chain_plugin>();
          chain::controller &cc = my->chain_plug->chain();
          cc.irreversible_block.connect(boost::bind(&bridge_plugin_impl::irreversible_block, my.get(), _1));
+         cc.applied_transaction.connect(boost::bind(&bridge_plugin_impl::applied_transaction, my.get(), _1));
 
          // init timer tick
          my->block_timer = std::make_unique<boost::asio::steady_timer>(app().get_io_service());
