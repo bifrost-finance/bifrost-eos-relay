@@ -14,10 +14,10 @@ class bridge_plugin : public appbase::plugin<bridge_plugin> {
 public:
    bridge_plugin();
    virtual ~bridge_plugin();
- 
+
    APPBASE_PLUGIN_REQUIRES((chain_plugin))
    virtual void set_program_options(options_description&, options_description& cfg) override;
- 
+
    void plugin_initialize(const variables_map& options);
    void plugin_startup();
    void plugin_shutdown();
