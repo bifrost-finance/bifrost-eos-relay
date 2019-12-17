@@ -12,14 +12,16 @@ namespace eosio {
 
    static appbase::abstract_plugin &_bridge_plugin = app().register_plugin<bridge_plugin>();
 
+   struct by_status;
+
    typedef multi_index_container<
            bridge_blocks,
            indexed_by<
                    ordered_unique<
                            tag<by_id>,
                            member<bridge_blocks,
-                                   block_id_type,
-                                   &bridge_blocks::id> >
+                                  block_id_type,
+                                  &bridge_blocks::id> >
            >
    > bridge_block_index;
 
@@ -29,10 +31,31 @@ namespace eosio {
                    ordered_unique<
                            tag<by_id>,
                            member<bridge_change_schedule,
-                                   block_id_type,
-                                   &bridge_change_schedule::id> >
+                                  block_id_type,
+                                  &bridge_change_schedule::id> >,
+                   ordered_non_unique<
+                           tag<by_status>,
+                           member<bridge_change_schedule,
+                                  uint8_t,
+                                  &bridge_change_schedule::status> >
            >
    > bridge_change_schedule_index;
+
+   typedef multi_index_container<
+           bridge_prove_action,
+           indexed_by<
+                   ordered_unique<
+                           tag<by_id>,
+                           member<bridge_prove_action,
+                                  block_id_type,
+                                  &bridge_prove_action::id> >,
+                   ordered_non_unique<
+                           tag<by_status>,
+                           member<bridge_prove_action,
+                                  uint8_t,
+                                  &bridge_prove_action::status > >
+           >
+   > bridge_prove_action_index;
 
    class bridge_plugin_impl {
    public:
@@ -46,8 +69,9 @@ namespace eosio {
       boost::asio::steady_timer::duration change_schedule_timeout{std::chrono::milliseconds{1000}};
       boost::asio::steady_timer::duration prove_action_timeout{std::chrono::milliseconds{1000}};
 
-      bridge_block_index block_index;
-      bridge_change_schedule_index change_schedule_index;
+      bridge_block_index            block_index;
+      bridge_change_schedule_index  change_schedule_index;
+      bridge_prove_action_index     prove_action_index;
 
       void block_timer_tick();
 
