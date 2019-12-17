@@ -73,31 +73,12 @@ namespace eosio {
       bridge_change_schedule_index  change_schedule_index;
       bridge_prove_action_index     prove_action_index;
 
-      void block_timer_tick();
-
       void change_schedule_timer_tick();
-
       void prove_action_timer_tick();
 
       void irreversible_block(const chain::block_state_ptr &);
       void applied_transaction(std::tuple<const transaction_trace_ptr &, const signed_transaction &>);
    };
-
-   void bridge_plugin_impl::block_timer_tick() {
-      block_timer->expires_from_now(block_timeout);
-      block_timer->async_wait([&](boost::system::error_code ec) {
-         uint32_t lib_block_num = chain_plug->chain().last_irreversible_block_num();
-         ilog("block_timer_tick: ${lib_block_num}", ("lib_block_num", lib_block_num));
-         block_timer_tick();
-
-         // TODO retrieve start_block_id and end_block_id
-         // for block from start_block_id to end_block_id
-         //    1. if is new_producers
-         //      save new_producers and relevant info to local storage
-         //    2. if is deposite/withdraw action
-         //      record action and relevant info to local storage
-      });
-   }
 
    void bridge_plugin_impl::change_schedule_timer_tick() {
       change_schedule_timer->expires_from_now(change_schedule_timeout);
@@ -153,7 +134,18 @@ namespace eosio {
       }
 
       // TODO check change_schedule_index
+      auto cs_status_iter = change_schedule_index.get<by_status>().find(0);
+      auto cs_it = change_schedule_index.project<0>(cs_status_iter);
+      for (; cs_it != change_schedule_index.end(); ++cs_it) {
+
+      }
+
       // TODO check prove_action_index
+      auto pa_status_iter = prove_action_index.get<by_status>().find(0);
+      auto pa_it = prove_action_index.project<0>(pa_status_iter);
+      for (; pa_it != prove_action_index.end(); ++pa_it) {
+
+      }
    }
 
    void bridge_plugin_impl::applied_transaction(std::tuple<const transaction_trace_ptr &, const signed_transaction &> t) {
@@ -201,7 +193,6 @@ namespace eosio {
          cc.applied_transaction.connect(boost::bind(&bridge_plugin_impl::applied_transaction, my.get(), _1));
 
          // init timer tick
-         my->block_timer = std::make_unique<boost::asio::steady_timer>(app().get_io_service());
          my->change_schedule_timer = std::make_unique<boost::asio::steady_timer>(app().get_io_service());
          my->prove_action_timer = std::make_unique<boost::asio::steady_timer>(app().get_io_service());
 
@@ -214,7 +205,6 @@ namespace eosio {
       ilog("bridge_plugin::plugin_startup.");
 
       // start timer tick
-      my->block_timer_tick();
       my->change_schedule_timer_tick();
       my->prove_action_timer_tick();
    }
