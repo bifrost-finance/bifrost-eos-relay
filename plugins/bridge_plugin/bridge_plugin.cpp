@@ -102,26 +102,26 @@ namespace eosio {
    void bridge_plugin_impl::change_schedule_timer_tick() {
       change_schedule_timer->expires_from_now(change_schedule_timeout);
       change_schedule_timer->async_wait([&](boost::system::error_code ec) {
-         change_schedule_timer_tick();
+         auto status_iter = change_schedule_index.get<by_status>().find( 1 );
+         auto it = change_schedule_index.project<0>(status_iter);
+         for (; it != change_schedule_index.end(); ++it) {
+            // TODO send change_schedule transaction
+         }
 
-         // TODO read new_producers data
-         // for new_producer in new_producers:
-         //   if active_schedule is on chain（bifrost）&& irreversible block exceeded 15 * 12 blocks:
-         //     retrieve relevant data from local storage
-         //     send change_schedule transaction to bifrost
+         change_schedule_timer_tick();
       });
    }
 
    void bridge_plugin_impl::prove_action_timer_tick() {
       prove_action_timer->expires_from_now(prove_action_timeout);
       prove_action_timer->async_wait([&](boost::system::error_code ec) {
-         prove_action_timer_tick();
+         auto status_iter = prove_action_index.get<by_status>().find( 1 );
+         auto it = prove_action_index.project<0>(status_iter);
+         for (; it != prove_action_index.end(); ++it) {
+            // TODO send prove_action transaction
+         }
 
-         // TODO read prove_actions data
-         // for prove_action in prove_actions:
-         //   if active_schedule is on chain（bifrost）&& irreversible block exceeded 15 * 12 blocks:
-         //     retrieve relevant data from local storage
-         //     send prove_action transaction to bifrost
+         prove_action_timer_tick();
       });
    }
 
@@ -136,6 +136,7 @@ namespace eosio {
          block_index.erase(block_index.begin());
       }
       block_index.insert(bb);
+      ilog("block_index size: ${bi}", ("bi", block_index.size()));
 
       // check if block has new producers
       auto blk = block->block;
@@ -151,7 +152,8 @@ namespace eosio {
          change_schedule_index.insert(cs);
       }
 
-      ilog("block_index size: ${bi}", ("bi", block_index.size()));
+      // TODO check change_schedule_index
+      // TODO check prove_action_index
    }
 
    void bridge_plugin_impl::applied_transaction(std::tuple<const transaction_trace_ptr &, const signed_transaction &> t) {
