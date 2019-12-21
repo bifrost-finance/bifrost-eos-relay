@@ -238,16 +238,16 @@ namespace eosio {
 
       uint32_t change_schedule_index_size = change_schedule_index.size();
       fc::raw::pack(out, unsigned_int{change_schedule_index_size});
-      auto cs_status_iter = change_schedule_index.get<by_status>().find(0);
-      auto cs_it = change_schedule_index.project<0>(cs_status_iter);
+      auto cs_iter = change_schedule_index.get<by_id>().begin();
+      auto cs_it = change_schedule_index.project<0>(cs_iter);
       for (; cs_it != change_schedule_index.end(); ++cs_it) {
          fc::raw::pack(out, *cs_it);
       }
 
       uint32_t prove_action_index_size = prove_action_index.size();
       fc::raw::pack(out, unsigned_int{prove_action_index_size});
-      auto pa_status_iter = prove_action_index.get<by_status>().find(0);
-      auto pa_it = prove_action_index.project<0>(pa_status_iter);
+      auto pa_iter = prove_action_index.get<by_id>().begin();
+      auto pa_it = prove_action_index.project<0>(pa_iter);
       for (; pa_it != prove_action_index.end(); ++pa_it) {
          fc::raw::pack(out, *pa_it);
       }
