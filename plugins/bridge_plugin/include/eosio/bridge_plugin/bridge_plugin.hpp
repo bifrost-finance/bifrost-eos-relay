@@ -48,8 +48,16 @@ struct bridge_prove_action {
    uint8_t                                   status;
 };
 
+struct action_transfer {
+    account_name from;
+    account_name to;
+    asset quantity;
+    string memo;
+};
+
 }
 
 FC_REFLECT( eosio::bridge_blocks, (id)(bls) )
+FC_REFLECT( eosio::action_transfer, (from)(to)(quantity)(memo) )
 FC_REFLECT( eosio::bridge_change_schedule, (id)(imcre_merkle)(block_headers)(block_id_lists)(status) )
 FC_REFLECT( eosio::bridge_prove_action, (id)(act)(act_receipt)(act_receipt_merkle_paths)(imcre_merkle)(block_headers)(block_id_lists)(status) )

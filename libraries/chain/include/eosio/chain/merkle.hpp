@@ -19,4 +19,6 @@ namespace eosio { namespace chain {
     */
    digest_type merkle( vector<digest_type> ids );
 
+   vector<digest_type> get_proof(int position, vector<digest_type> ids);
+
 } } /// eosio::chain
