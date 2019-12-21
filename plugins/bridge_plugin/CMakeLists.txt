@@ -11,13 +11,12 @@ endif ()
 
 set(LIB_RPC "${CMAKE_CURRENT_BINARY_DIR}/${TARGET_DIR}/librpc_client.dylib")
 
-add_custom_command(
-    OUTPUT bifrost_rpc
-    PRE_BUILD
+add_custom_target(
+    bifrost_rpc ALL
+    COMMENT "Compiling rpc module"
     COMMAND CARGO_TARGET_DIR=${CMAKE_CURRENT_BINARY_DIR} ${CARGO_CMD}
     COMMAND cp ${LIB_RPC} ${CMAKE_CURRENT_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    COMMENT "Compiled rust based bifrost rpc module successfully "
 )
 
 add_library(
@@ -26,16 +25,18 @@ add_library(
     ${HEADERS}
 )
 
+add_dependencies(bridge_plugin bifrost_rpc)
+
 target_link_libraries(
-        bridge_plugin
-        chain_plugin
-        appbase
-        ${LIB_RPC}
+    bridge_plugin
+    chain_plugin
+    appbase
+    ${LIB_RPC}
 )
 target_include_directories(
-        bridge_plugin PUBLIC
-        "${CMAKE_CURRENT_SOURCE_DIR}/include"
-        "${CMAKE_CURRENT_SOURCE_DIR}/bifrost_rpc"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../chain_interface/include"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../../libraries/appbase/include"
+    bridge_plugin PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/bifrost_rpc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../chain_interface/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../libraries/appbase/include"
 )
