@@ -62,11 +62,9 @@ namespace eosio {
    public:
       chain_plugin *chain_plug = nullptr;
 
-      unique_ptr<boost::asio::steady_timer> block_timer;
       unique_ptr<boost::asio::steady_timer> change_schedule_timer;
       unique_ptr<boost::asio::steady_timer> prove_action_timer;
 
-      boost::asio::steady_timer::duration block_timeout{std::chrono::milliseconds{1000}};
       boost::asio::steady_timer::duration change_schedule_timeout{std::chrono::milliseconds{1000}};
       boost::asio::steady_timer::duration prove_action_timeout{std::chrono::milliseconds{1000}};
 
