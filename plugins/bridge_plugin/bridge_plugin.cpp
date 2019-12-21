@@ -3,7 +3,8 @@
 
 #include <boost/multi_index_container.hpp>
 #include <boost/asio/steady_timer.hpp>
-
+#include <fc/io/fstream.hpp>
+#include <fstream>
 #include <fc/log/logger_config.hpp>
 
 namespace eosio {
@@ -73,11 +74,16 @@ namespace eosio {
       bridge_change_schedule_index  change_schedule_index;
       bridge_prove_action_index     prove_action_index;
 
+      fc::path datadir;
+
       void change_schedule_timer_tick();
       void prove_action_timer_tick();
 
       void irreversible_block(const chain::block_state_ptr &);
       void applied_transaction(std::tuple<const transaction_trace_ptr &, const signed_transaction &>);
+
+      void open_db();
+      void close_db();
    };
 
    void bridge_plugin_impl::change_schedule_timer_tick() {
@@ -168,6 +174,89 @@ namespace eosio {
 
    }
 
+   void bridge_plugin_impl::open_db() {
+      ilog("bridge_plugin_impl::open_db()");
+
+      datadir = app().data_dir() / "bridge";
+      if (!fc::is_directory(datadir))
+         fc::create_directories(datadir);
+
+      auto bridge_db_dat = datadir / config::bridgedb_filename;
+      if (fc::exists(bridge_db_dat)) {
+         try {
+            string content;
+            fc::read_file_contents(bridge_db_dat, content);
+            fc::datastream<const char *> ds(content.data(), content.size());
+
+            block_index.clear();
+            change_schedule_index.clear();
+            prove_action_index.clear();
+
+            unsigned_int block_index_size;
+            fc::raw::unpack(ds, block_index_size);
+            for (uint32_t i = 0, n = block_index_size.value; i < n; ++i) {
+               bridge_blocks bb;
+               fc::raw::unpack(ds, bb);
+               block_index.insert(bb);
+            }
+
+            unsigned_int change_schedule_index_size;
+            fc::raw::unpack(ds, change_schedule_index_size);
+            for (uint32_t i = 0, n = change_schedule_index_size.value; i < n; ++i) {
+               bridge_change_schedule bcs;
+               fc::raw::unpack(ds, bcs);
+               change_schedule_index.insert(bcs);
+            }
+
+            unsigned_int prove_action_index_size;
+            fc::raw::unpack(ds, prove_action_index_size);
+            for (uint32_t i = 0, n = prove_action_index_size.value; i < n; ++i) {
+               bridge_prove_action bpa;
+               fc::raw::unpack(ds, bpa);
+               prove_action_index.insert(bpa);
+            }
+
+         } FC_CAPTURE_AND_RETHROW((bridge_db_dat))
+
+         fc::remove(bridge_db_dat);
+      }
+   }
+
+   void bridge_plugin_impl::close_db() {
+      ilog("bridge_plugin_impl::close_db()");
+      auto bridge_db_dat = datadir / config::bridgedb_filename;
+
+      std::ofstream out(bridge_db_dat.generic_string().c_str(), std::ios::out | std::ios::binary | std::ofstream::trunc);
+
+      uint32_t block_index_size = block_index.size();
+      fc::raw::pack(out, unsigned_int{block_index_size});
+      auto block_iter = block_index.get<by_id>().begin();
+      auto blk_it = block_index.project<0>(block_iter);
+      for (; blk_it != block_index.end(); ++blk_it) {
+         fc::raw::pack(out, *blk_it);
+      }
+
+      uint32_t change_schedule_index_size = change_schedule_index.size();
+      fc::raw::pack(out, unsigned_int{change_schedule_index_size});
+      auto cs_status_iter = change_schedule_index.get<by_status>().find(0);
+      auto cs_it = change_schedule_index.project<0>(cs_status_iter);
+      for (; cs_it != change_schedule_index.end(); ++cs_it) {
+         fc::raw::pack(out, *cs_it);
+      }
+
+      uint32_t prove_action_index_size = prove_action_index.size();
+      fc::raw::pack(out, unsigned_int{prove_action_index_size});
+      auto pa_status_iter = prove_action_index.get<by_status>().find(0);
+      auto pa_it = prove_action_index.project<0>(pa_status_iter);
+      for (; pa_it != prove_action_index.end(); ++pa_it) {
+         fc::raw::pack(out, *pa_it);
+      }
+
+      block_index.clear();
+      change_schedule_index.clear();
+      prove_action_index.clear();
+   }
+
    bridge_plugin::bridge_plugin() : my(new bridge_plugin_impl()) {}
 
    bridge_plugin::~bridge_plugin() {}
@@ -186,6 +275,8 @@ namespace eosio {
          if (options.count("option-name")) {
             // Handle the option
          }
+
+         my->open_db();
 
          my->chain_plug = app().find_plugin<chain_plugin>();
          chain::controller &cc = my->chain_plug->chain();
@@ -212,5 +303,7 @@ namespace eosio {
    void bridge_plugin::plugin_shutdown() {
       // OK, that's enough magic
       ilog("bridge_plugin::plugin_shutdown.");
+
+      my->close_db();
    }
 }
