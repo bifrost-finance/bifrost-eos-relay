@@ -29,6 +29,13 @@ struct bridge_blocks {
    block_state                               bls;
 };
 
+enum Status {
+   FailureOnVerification,
+   SuccessOnVerification,
+   UnderVerification,
+   AwaitVerification,
+};
+
 struct bridge_change_schedule {
    block_id_type                             id;
    incremental_merkle                        imcre_merkle;
@@ -48,6 +55,15 @@ struct bridge_prove_action {
    uint8_t                                   status;
 };
 
+struct block_header_trace {
+    uint32_t                                 block_num = 0; // the block has transfer action
+    action                                   act;
+    action_receipt                           act_receipt;
+    std::vector<block_id_type>               act_receipt_merkle_paths;
+    std::vector<block_state>                 bs;
+    uint8_t                                  status = 0;
+};
+
 struct action_transfer {
     account_name from;
     account_name to;
@@ -59,5 +75,6 @@ struct action_transfer {
 
 FC_REFLECT( eosio::bridge_blocks, (id)(bls) )
 FC_REFLECT( eosio::action_transfer, (from)(to)(quantity)(memo) )
+FC_REFLECT( eosio::block_header_trace, (block_num)(act)(act_receipt)(act_receipt_merkle_paths)(bs)(status) )
 FC_REFLECT( eosio::bridge_change_schedule, (id)(imcre_merkle)(block_headers)(block_id_lists)(status) )
 FC_REFLECT( eosio::bridge_prove_action, (id)(act)(act_receipt)(act_receipt_merkle_paths)(imcre_merkle)(block_headers)(block_id_lists)(status) )

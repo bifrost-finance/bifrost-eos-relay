@@ -1333,7 +1333,8 @@ struct controller_impl {
             }
 
             emit(self.applied_transaction, std::tie(trace, trn));
-
+            // trigger this signal for sending all action receipts
+            emit(self.apply_action_receipt, std::tie(trace, pending->_block_stage.get<building_block>()._actions));
 
             if ( read_mode != db_read_mode::SPECULATIVE && pending->_block_status == controller::block_status::incomplete ) {
                //this may happen automatically in destructor, but I prefere make it more explicit
@@ -1363,6 +1364,9 @@ struct controller_impl {
 
          emit( self.accepted_transaction, trx );
          emit( self.applied_transaction, std::tie(trace, trn) );
+
+         // trigger this signal for sending all action receipts
+         emit(self.apply_action_receipt, std::tie(trace, pending->_block_stage.get<building_block>()._actions));
 
          return trace;
       } FC_CAPTURE_AND_RETHROW((trace))

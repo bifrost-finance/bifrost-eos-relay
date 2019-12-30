@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Bifrost.  If not, see <http://www.gnu.org/licenses/>.
 
-use eos_chain::Checksum256;
+use eos_chain::{Action, ActionReceipt, Checksum256, Digest, IncrementalMerkle, SignedBlockHeader};
 use log::info;
 use keyring::AccountKeyring;
 use primitives::crypto::Pair;
@@ -28,11 +28,15 @@ use std::{
     slice,
 };
 
+use std::fs::File;
+use std::io::prelude::*;
+use std::str::FromStr;
+
 mod ffi_types;
 use ffi_types::*;
 
 #[no_mangle]
-pub extern fn change_schedule(
+pub extern "C" fn change_schedule(
     url: *const c_char,
     signer: *const c_char,
     merkle: *const IncrementalMerkleFFI,
@@ -77,7 +81,7 @@ pub extern fn change_schedule(
 
     let proposal = compose_call!(
         api.metadata.clone(),
-        "BridgeEOS",
+        "BridgeEos",
         "change_schedule",
         merkle,
         block_headers,
@@ -98,82 +102,96 @@ pub extern fn change_schedule(
     println!("[+] Transaction got finalized. Hash: {:?}\n", tx_hash);
 }
 
+fn create_file(s: &str) -> std::io::Result<()> {
+    let file_name = format!("{}.txt", s);
+    let mut file = std::fs::File::create(file_name)?;
+    file.write_all(b"Hello, world!")?;
+    Ok(())
+}
+
 #[no_mangle]
-pub extern fn prove_action(
+pub extern "C" fn prove_action(
     url: *const c_char,
     signer: *const c_char,
-    action: *const ActionFFI,
-    action_auth_len: size_t,
-    action_data_len: size_t,
-    action_receipt: *const ActionReceiptFFI,
-    auth_sequence_len: size_t,
+    action_json: *const c_char,
+    receipt_json: *const c_char,
     action_merkle_paths: *const Checksum256,
     action_merkle_paths_len: size_t,
-    merkle: *const IncrementalMerkleFFI,
-    merkle_checksum_len: size_t,
-    block_headers: *const SignedBlockHeaderFFI,
-    block_headers_len: size_t,
-    block_ids_list: *const *const Checksum256
-) {
-    // check the params pointers are null or not
+    active_nodes: *const Checksum256,
+    active_node_size: size_t,
+    node_count: u64,
+    blocks_json: *const c_char,
+    ids_json: *const c_char
+) -> bool {
+    let blocks = unsafe {
+        cstr_to_string(blocks_json).expect("parse block header with failure.")
+    };
+    let block_headers1: Result<Vec<SignedBlockHeader>, _> = serde_json::from_str(&blocks);
+    let block_headers1 = block_headers1.unwrap();
+
+    let ids_list = unsafe {
+        cstr_to_string(ids_json).expect("parse block header with failure.")
+    };
+    dbg!(&ids_list);
+    let ids_list: Result<Vec<Vec<Checksum256>>, _> = serde_json::from_str(&ids_list);
+    dbg!(&ids_list);
+    let ids_list = ids_list.unwrap();
+
     match (
-        url.is_null(), signer.is_null(), action.is_null(), action_receipt.is_null(), action_merkle_paths.is_null(),
-        merkle.is_null(), block_headers.is_null(), block_ids_list.is_null()
+        url.is_null(), signer.is_null(), action_json.is_null(), receipt_json.is_null(), action_merkle_paths.is_null(),
+        active_nodes.is_null(), blocks_json.is_null()//, block_ids_list.is_null()
     ) {
-        (true, true, true, true, true, true, true, true) => {
+        (false, false, false, false, false, false, false) => {
             // normal code
             info!("all are valid pointers.");
         }
         _ => {
-            // there's a null pointer among params
-            // exception happends.
-            return;
+            info!("all of them are not null pointers");
+            return false;
         }
     }
-
     let action = unsafe {
-        (*action).clone().into_action(action_auth_len, action_data_len).expect("failed to read value from c++ pointer.") // Todo, remove expect
+        cstr_to_string(action_json).expect("parse block header with failure.")
     };
+    dbg!(&action);
+    let action: Result<Action, _> = serde_json::from_str(&action);
+    dbg!(&action);
+    let action = action.unwrap();
 
     let action_receipt = unsafe {
-        (*action_receipt).clone().into_action_receipt(auth_sequence_len).expect("failed to read value from c++ pointer.") // Todo, remove expect
+        cstr_to_string(receipt_json).expect("parse block header with failure.")
     };
+    let action_receipt: Result<ActionReceipt, _> = serde_json::from_str(&action_receipt);
+    let action_receipt = action_receipt.unwrap();
 
     let action_merkle_paths = unsafe {
         slice::from_raw_parts(action_merkle_paths, action_merkle_paths_len).to_vec()
     };
 
     let merkle = unsafe {
-        (*merkle).clone().into_incrementl_merkle(merkle_checksum_len)
-    };
-
-    let block_headers = unsafe {
-        slice::from_raw_parts(block_headers, block_headers_len).iter().map(|f| f.into_signed_block_header()).collect::<Vec<_>>()
-    };
-
-    let block_ids_list = unsafe {
-        let ffi = slice::from_raw_parts(block_ids_list, 15).to_vec();
-        ffi.into_iter().map(|f| {
-            slice::from_raw_parts(f, 10).to_vec()
-        }).collect::<Vec<_>>()
+        let active_nodes = slice::from_raw_parts(active_nodes, active_node_size).to_vec();
+        for i in &active_nodes {
+            dbg!(&i.to_string());
+        }
+        IncrementalMerkle::new(node_count, active_nodes)
     };
 
     let url = unsafe {
         cstr_to_string(url).expect("failed to convert cstring to rust string.")
     };
     let signer = AccountKeyring::Alice.pair();
-    let api = Api::new(format!("ws://{}", url)).set_signer(signer.clone());
+    let api = Api::new(format!("ws://{}:9944", url)).set_signer(signer.clone());
 
     let proposal = compose_call!(
         api.metadata.clone(),
-        "BridgeEOS",
+        "BridgeEos",
         "prove_action",
         action,
         action_receipt,
         action_merkle_paths,
         merkle,
-        block_headers,
-        block_ids_list
+        block_headers1,
+        ids_list
     );
 
     let xt: UncheckedExtrinsicV4<_> = compose_extrinsic!(
@@ -187,4 +205,6 @@ pub extern fn prove_action(
     // send and watch extrinsic until finalized
     let tx_hash = api.send_extrinsic(xt.hex_encode()).unwrap();
     println!("[+] Transaction got finalized. Hash: {:?}\n", tx_hash);
+
+    true
 }

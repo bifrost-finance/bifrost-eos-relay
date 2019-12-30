@@ -24,7 +24,7 @@
 #include <eosio/chain/types.hpp>
 
 #ifdef __cplusplus
-extern "C" { // Todo, after include related headers, extern C++ support template, use extern "C"
+extern "C" {
 #endif
 
 // bifrost rpc api
@@ -34,26 +34,23 @@ void change_schedule(
         char* signer,
         const eosio::incremental_merkle* merkle,
         size_t merkle_checksum_len,
-        const std::vector<eosio::signed_block_header> block_headers,
+        const eosio::signed_block_header *block_headers,
         size_t block_headers_len,
         const std::vector<std::vector<eosio::block_id_type>> block_ids_list
 );
 
-void prove_action(
-        char* url,
-        char* signer,
-        const eosio::action* action,
-        size_t action_auth_len,
-        size_t action_data_len,
-        const eosio::action_receipt* action_receipt,
-        size_t auth_sequence_len,
-        const std::vector<eosio::block_id_type> action_merkle_paths,
+bool prove_action(
+        const char* url,
+        const char* signer,
+        const char* action_json,
+        const char* receipt_json,
+        const eosio::block_id_type *action_merkle_paths,
         size_t action_merkle_paths_len,
-        const eosio::incremental_merkle* merkle,
+        const eosio::block_id_type* _active_nodes,
         size_t merkle_checksum_len,
-        const std::vector<eosio::signed_block_header> block_headers,
-        size_t block_headers_len,
-        const std::vector<std::vector<eosio::block_id_type>> block_ids_list
+        uint64_t _node_count,
+        const char* blocks_json,
+        const char* ids_json
 );
 
 #ifdef __cplusplus

@@ -16,18 +16,18 @@
 
 use eos_chain::{
     Action, AccountName, ActionName, ActionReceipt, PermissionLevel, Checksum256,
-    Signature, BlockHeader, Extension, utils::flat_map::FlatMap, UnsignedInt,
+    Signature, BlockHeader, Extension, utils::flat_map::FlatMap, UnsignedInt, PublicKey,
     ProducerKey, BlockTimestamp, ProducerSchedule, IncrementalMerkle, SignedBlockHeader
 };
 use std::os::raw::{c_char, c_uint, c_ushort, c_ulonglong};
-use std::{slice, ffi::CStr};
+use std::{slice, ffi::{CStr, CString}};
 
 #[allow(non_camel_case_types)]
 pub(crate) type size_t = usize;
 pub(crate) type FFIResult<T> = std::result::Result<T, Box<dyn std::error::Error + Sync + Send + 'static>>;
 
-#[repr(C)]
 #[derive(Clone, Debug)]
+#[repr(C)]
 pub struct ActionFFI {
     pub account: AccountName,
     pub name: ActionName,
@@ -36,7 +36,7 @@ pub struct ActionFFI {
 }
 
 impl ActionFFI {
-    pub(crate) unsafe fn into_action(self, auth_len: usize, data_len: usize) -> FFIResult<Action> {
+    pub(crate) unsafe fn into_action(&self, auth_len: usize, data_len: usize) -> FFIResult<Action> {
         let account = self.account;
         let name = self.name;
         let authorization = slice::from_raw_parts(self.authorization, auth_len).to_vec();
@@ -50,8 +50,8 @@ impl ActionFFI {
     }
 }
 
-#[repr(C)]
 #[derive(Clone, Debug)]
+#[repr(C)]
 pub struct ActionReceiptFFI {
     pub receiver: AccountName,
     pub act_digest: Checksum256,
@@ -63,13 +63,13 @@ pub struct ActionReceiptFFI {
 }
 
 impl ActionReceiptFFI {
-    pub(crate) unsafe fn into_action_receipt(self, auth_sequence_len: usize) -> FFIResult<ActionReceipt> {
+    pub(crate) unsafe fn into_action_receipt(&self, auth_sequence_len: usize) -> FFIResult<ActionReceipt> {
         let receiver = self.receiver;
         let act_digest = self.act_digest;
         let global_sequence = self.global_sequence;
         let recv_sequence = self.recv_sequence;
-        let code_sequence = self.code_sequence;
-        let abi_sequence = self.abi_sequence;
+        let code_sequence = self.code_sequence.clone();
+        let abi_sequence = self.abi_sequence.clone();
         let auth_sequence = self.auth_sequence.into_flat_map(auth_sequence_len); // Todo, do a experiment on c++ class to rust struct
         Ok(ActionReceipt {
             receiver,
@@ -83,10 +83,10 @@ impl ActionReceiptFFI {
     }
 }
 
-#[repr(C)]
 #[derive(Clone, Debug)]
+#[repr(C)]
 pub struct FlatMapFFI<K, V> { // Todo
-maps: *const (K, V),
+    maps: *const (K, V),
 }
 
 impl<K, V> FlatMapFFI<K, V> where K: Clone, V: Clone {
@@ -96,8 +96,8 @@ impl<K, V> FlatMapFFI<K, V> where K: Clone, V: Clone {
     }
 }
 
-#[repr(C)]
 #[derive(Clone, Debug)]
+#[repr(C)]
 pub struct IncrementalMerkleFFI {
     _node_count: c_ulonglong,
     _active_nodes: *const Checksum256,
@@ -111,8 +111,8 @@ impl IncrementalMerkleFFI {
     }
 }
 
-#[repr(C)]
 #[derive(Clone, Debug)]
+#[repr(C)]
 pub struct ExtensionFFI(c_ushort, *const c_char);
 
 impl ExtensionFFI {
@@ -121,15 +121,31 @@ impl ExtensionFFI {
     }
 }
 
-#[repr(C)]
 #[derive(Clone, Debug)]
+#[repr(C)]
+pub struct PublicKeyFFI {
+    pub type_: UnsignedInt,
+    pub data: *const c_char, // constant array, length is 33
+}
+
+#[derive(Clone, Debug)]
+#[repr(C)]
+pub struct ProducerKeyFFI {
+    pub producer_name: AccountName,
+    pub block_signing_key: PublicKeyFFI,
+}
+
+
+#[derive(Clone, Debug)]
+#[repr(C)]
 pub struct ProducerScheduleFFI {
     pub version: c_uint,
     pub producers: *const ProducerKey,
+//    pub producers: *const ProducerKeyFFI,
 }
 
 impl ProducerScheduleFFI {
-    pub unsafe fn into_producer_shcedule(self, producers_count: usize) -> ProducerSchedule {
+    pub unsafe fn into_producer_shcedule(&self, producers_count: usize) -> ProducerSchedule {
         ProducerSchedule {
             version: self.version,
             producers: slice::from_raw_parts(self.producers, producers_count).to_vec()
@@ -137,8 +153,8 @@ impl ProducerScheduleFFI {
     }
 }
 
-#[repr(C)]
 #[derive(Clone, Debug)]
+#[repr(C)]
 pub struct BlockHeaderFFI {
     pub timestamp: BlockTimestamp,
     pub producer: AccountName,
@@ -148,17 +164,11 @@ pub struct BlockHeaderFFI {
     pub action_mroot: Checksum256,
     pub schedule_version: c_uint,
     pub new_producers: *const ProducerScheduleFFI, // Todo, rust Option vs c++ std::optional ?
-    pub header_extensions: *const ExtensionFFI,
+    pub header_extensions: *const Extension,
 }
 
 impl BlockHeaderFFI {
-    pub unsafe fn into_block_header(self, producers_count: usize, extensions_len: Vec<usize>) -> BlockHeader {
-        let mut extensions: Vec<Extension> = Vec::with_capacity(extensions_len.len());
-        let exts_ffi = slice::from_raw_parts(self.header_extensions, extensions_len.len());
-        for (ext, len) in exts_ffi.iter().zip(extensions_len.iter()) {
-            let e = ext.into_extension(*len);
-            extensions.push(e);
-        }
+    pub unsafe fn into_block_header(&self, producers_count: usize, extensions_len: Vec<usize>) -> BlockHeader {
         BlockHeader {
             timestamp: self.timestamp,
             producer: self.producer,
@@ -167,24 +177,24 @@ impl BlockHeaderFFI {
             transaction_mroot: self.transaction_mroot,
             action_mroot: self.action_mroot,
             schedule_version: self.schedule_version,
-            new_producers: Some((*self.new_producers).clone().into_producer_shcedule(producers_count)),
-            header_extensions: extensions
+            new_producers: None,
+            header_extensions: Default::default()
         }
     }
 }
 
-#[repr(C)]
 #[derive(Clone, Debug)]
+#[repr(C)]
 pub struct SignedBlockHeaderFFI {
-    pub block_header: *const BlockHeaderFFI,
+    pub block_header: BlockHeaderFFI,
     pub producer_signature: Signature,
 }
 
 impl SignedBlockHeaderFFI {
     pub unsafe fn into_signed_block_header(&self) -> SignedBlockHeader {
-        let ffi = std::ptr::read(self.block_header);
+        let ffi = self.block_header.clone();
         SignedBlockHeader {
-            block_header: ffi.into_block_header(15, Vec::new()),
+            block_header: ffi.into_block_header(1, Vec::new()),
             producer_signature: self.producer_signature.clone()
         }
     }
@@ -194,4 +204,22 @@ pub(crate) unsafe fn cstr_to_string(cstr: *const c_char) -> FFIResult<String> {
     let cstr = CStr::from_ptr(cstr);
     let rust_string = cstr.to_str()?.to_string();
     Ok(rust_string)
+}
+
+pub(crate) fn generate_error(success: bool, err_msg: impl AsRef<str>) -> RustError {
+    let c_str = CString::new(err_msg.as_ref())
+                .unwrap_or(CString::new("unknow error type.")
+                .expect("failed to get raw pointer of error message"));
+    RustError {
+        success,
+        err_msg: c_str.as_ptr()
+    }
+}
+
+// Todo, this error will return to c++ caller
+#[derive(Clone, Debug)]
+#[repr(C)]
+pub struct RustError {
+    success: bool,
+    err_msg: *const c_char,
 }
