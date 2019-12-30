@@ -10,7 +10,6 @@ crate-type =["cdylib"]
 
 [dependencies]
 eos-chain = { git = "https://github.com/bifrost-codes/rust-eos", branch = "use-rust-secp256k1" }
-#eos-chain = { path = "/Users/liebi/my-repo/rust-eos/chain", branch = "use-rust-secp256k1" }
 log = "0.4"
 keyring = { package = "substrate-keyring", git = "https://github.com/paritytech/substrate", rev = "605852eaa414ddae0bb12bb4974b9cba24ccf7db" }
 rpc-client = { package = "substrate-rpc-client", git = "https://github.com/bifrost-codes/substrate-rpc-client.git" }

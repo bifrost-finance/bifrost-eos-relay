@@ -24,6 +24,8 @@ use rpc_client::{
     extrinsic::xt_primitives::UncheckedExtrinsicV4,
 };
 use std::{
+    mem,
+    ptr,
     os::raw::c_char,
     slice,
 };
@@ -102,61 +104,56 @@ pub extern "C" fn change_schedule(
     println!("[+] Transaction got finalized. Hash: {:?}\n", tx_hash);
 }
 
-fn create_file(s: &str) -> std::io::Result<()> {
-    let file_name = format!("{}.txt", s);
-    let mut file = std::fs::File::create(file_name)?;
-    file.write_all(b"Hello, world!")?;
-    Ok(())
-}
-
 #[no_mangle]
 pub extern "C" fn prove_action(
     url: *const c_char,
     signer: *const c_char,
-    action_json: *const c_char,
+    act_ffi: *const ActionFFI,
+    imcre_merkle: *const IncrementalMerkleFFI,
     receipt_json: *const c_char,
-    action_merkle_paths: *const Checksum256,
-    action_merkle_paths_len: size_t,
-    active_nodes: *const Checksum256,
-    active_node_size: size_t,
-    node_count: u64,
+    action_merkle_paths: *const Checksum256FFI,
     blocks_json: *const c_char,
-    ids_json: *const c_char
-) -> bool {
-    let blocks = unsafe {
-        cstr_to_string(blocks_json).expect("parse block header with failure.")
-    };
-    let block_headers1: Result<Vec<SignedBlockHeader>, _> = serde_json::from_str(&blocks);
-    let block_headers1 = block_headers1.unwrap();
-
-    let ids_list = unsafe {
-        cstr_to_string(ids_json).expect("parse block header with failure.")
-    };
-    dbg!(&ids_list);
-    let ids_list: Result<Vec<Vec<Checksum256>>, _> = serde_json::from_str(&ids_list);
-    dbg!(&ids_list);
-    let ids_list = ids_list.unwrap();
-
-    match (
-        url.is_null(), signer.is_null(), action_json.is_null(), receipt_json.is_null(), action_merkle_paths.is_null(),
-        active_nodes.is_null(), blocks_json.is_null()//, block_ids_list.is_null()
-    ) {
-        (false, false, false, false, false, false, false) => {
-            // normal code
-            info!("all are valid pointers.");
-        }
-        _ => {
-            info!("all of them are not null pointers");
-            return false;
-        }
+    ids_list: *const Checksum256FFI,
+    ids_list_size: usize
+) -> *const RpcResponse {
+    let ids: Vec<Checksum256> = Vec::with_capacity(10);
+    let mut ids_lists: Vec<Vec<Checksum256>>= vec![ids; 15];
+    let ids_list_ffi = unsafe { slice::from_raw_parts(ids_list, ids_list_size) };
+    for (i, val) in ids_list_ffi.iter().enumerate() {
+        ids_lists[i] = val.clone().into();
     }
-    let action = unsafe {
-        cstr_to_string(action_json).expect("parse block header with failure.")
+
+    let merkle: IncrementalMerkle = {
+        let imcre_merkle = unsafe { ptr::read(imcre_merkle) };
+        imcre_merkle.into()
     };
-    dbg!(&action);
-    let action: Result<Action, _> = serde_json::from_str(&action);
-    dbg!(&action);
-    let action = action.unwrap();
+
+    let action: Action = {
+        let ffi = unsafe { ptr::read(act_ffi) };
+        ffi.into()
+    };
+
+    let block_headers = {
+        let blocks = unsafe {
+            cstr_to_string(blocks_json)
+        };
+        match blocks {
+            Ok(ref blocks) => {
+                let block_headers: Result<Vec<SignedBlockHeader>, _> = serde_json::from_str(blocks);
+                if block_headers.is_err() {
+                    let err = generate_result(false, "failed to deserialize SignedBlockHeader.");
+                    let box_err = Box::new(err);
+                    return Box::into_raw(box_err);
+                }
+                block_headers.unwrap()
+            }
+            Err(e) => {
+                let err = generate_result(false, e.to_string());
+                let box_err = Box::new(err);
+                return Box::into_raw(box_err);
+            },
+        }
+    };
 
     let action_receipt = unsafe {
         cstr_to_string(receipt_json).expect("parse block header with failure.")
@@ -164,16 +161,9 @@ pub extern "C" fn prove_action(
     let action_receipt: Result<ActionReceipt, _> = serde_json::from_str(&action_receipt);
     let action_receipt = action_receipt.unwrap();
 
-    let action_merkle_paths = unsafe {
-        slice::from_raw_parts(action_merkle_paths, action_merkle_paths_len).to_vec()
-    };
-
-    let merkle = unsafe {
-        let active_nodes = slice::from_raw_parts(active_nodes, active_node_size).to_vec();
-        for i in &active_nodes {
-            dbg!(&i.to_string());
-        }
-        IncrementalMerkle::new(node_count, active_nodes)
+    let action_merkle_paths: Vec<_> = {
+        let paths = unsafe { ptr::read(action_merkle_paths) };
+        paths.into()
     };
 
     let url = unsafe {
@@ -190,8 +180,8 @@ pub extern "C" fn prove_action(
         action_receipt,
         action_merkle_paths,
         merkle,
-        block_headers1,
-        ids_list
+        block_headers,
+        ids_lists
     );
 
     let xt: UncheckedExtrinsicV4<_> = compose_extrinsic!(
@@ -206,5 +196,7 @@ pub extern "C" fn prove_action(
     let tx_hash = api.send_extrinsic(xt.hex_encode()).unwrap();
     println!("[+] Transaction got finalized. Hash: {:?}\n", tx_hash);
 
-    true
+    let result = generate_result(true, tx_hash.to_string());
+    let box_result = Box::new(result);
+    Box::into_raw(box_result)
 }

@@ -1,8 +1,9 @@
+#include "bifrost_rpc.h"
 #include <eosio/bridge_plugin/bridge_plugin.hpp>
+#include <eosio/bridge_plugin/ffi_types.hpp>
 #include <eosio/chain/exceptions.hpp>
 #include <eosio/chain/merkle.hpp>
 #include <eosio/chain/types.hpp>
-#include "bifrost_rpc.h"
 
 #include <boost/multi_index_container.hpp>
 #include <boost/asio/steady_timer.hpp>
@@ -174,38 +175,51 @@ namespace eosio {
 
              string blocks_json;
              blocks_json = fc::json::to_string(block_headers);
-             string ids_json;
-             ids_json = fc::json::to_string(block_id_lists);
 
              string receipt_json;
              receipt_json = fc::json::to_string(ti->act_receipt);
 
-             string action_json;
-             action_json = fc::json::to_string(ti->act);
-             ilog("action json is: ${json}", ("json", action_json));
+             auto act_ffi = convert_ffi(ti->act);
 
              auto pre_block_state = block_index.find(bl_state.header.previous);
              auto blockroot_merkle = pre_block_state->bls.blockroot_merkle;
+             auto merkle_ptr = convert_ffi(blockroot_merkle);
 
-             string mroot_json;
-             mroot_json = fc::json::to_string(blockroot_merkle);
-             bool success = prove_action(
+             auto merkle_paths = convert_ffi(ti->act_receipt_merkle_paths);
+
+             // ids list pointers
+             block_id_type_list *ids_list = new block_id_type_list[block_id_lists.size()];
+             for (size_t i = 0; i < block_id_lists.size(); ++i) {
+                if (block_id_lists[i].empty()) {
+                   ids_list[i] = block_id_type_list();
+                   continue;
+                }
+                ids_list[i] = convert_ffi(block_id_lists[i]);
+             }
+
+             rpc_result *result = prove_action(
                      "127.0.0.1",
                      "bob",
-                     action_json.data(),
+                     &act_ffi,
+                     &merkle_ptr,
                      receipt_json.data(),
-                     ti->act_receipt_merkle_paths.data(), ti->act_receipt_merkle_paths.size(),
-                     blockroot_merkle._active_nodes.data(), blockroot_merkle._active_nodes.size(), blockroot_merkle._node_count,
+                     &merkle_paths,
                      blocks_json.data(),
-                     ids_json.data()
+                     ids_list,
+                     block_id_lists.size()
              );
-             if (success) {
-                trace_index.modify(ti, [&](auto &entry) {
-                    entry.status = 2; // sent successfully
-                });
-                ilog("sent data to bifrost for proving action, status: ${status}.", ("status", ti->status));
-             } else {
-                ilog("failed to send data to bifrost for proving action.");
+             delete []ids_list;
+
+             if (result) { // not null
+                if (result->success) {
+                   trace_index.modify(ti, [&](auto &entry) {
+                       entry.status = 2; // sent successfully
+                   });
+                   ilog("sent data to bifrost for proving action.");
+                   ilog("Transaction got finalized. Hash: ${hash}.", ("hash", std::string(result->msg)));
+                } else {
+                   ilog("failed to send data to bifrost for proving action due to: ${err}.", ("err", std::string(result->msg)));
+                }
              }
           }
 

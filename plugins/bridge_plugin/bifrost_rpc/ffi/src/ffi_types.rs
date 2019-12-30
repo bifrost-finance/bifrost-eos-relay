@@ -21,6 +21,7 @@ use eos_chain::{
 };
 use std::os::raw::{c_char, c_uint, c_ushort, c_ulonglong};
 use std::{slice, ffi::{CStr, CString}};
+use std::borrow::Cow;
 
 #[allow(non_camel_case_types)]
 pub(crate) type size_t = usize;
@@ -32,21 +33,53 @@ pub struct ActionFFI {
     pub account: AccountName,
     pub name: ActionName,
     pub authorization: *const PermissionLevel,
+    pub authorization_size: usize,
     pub data: *const c_char,
+    pub data_size: usize
 }
 
 impl ActionFFI {
-    pub(crate) unsafe fn into_action(&self, auth_len: usize, data_len: usize) -> FFIResult<Action> {
+    pub(crate) unsafe fn into_action(&self) -> FFIResult<Action> {
         let account = self.account;
         let name = self.name;
-        let authorization = slice::from_raw_parts(self.authorization, auth_len).to_vec();
-        let data = slice::from_raw_parts(self.data, data_len).iter().map(|c| *c as u8).collect::<Vec<_>>();
+        let authorization = slice::from_raw_parts(self.authorization, self.authorization_size).to_vec();
+        let data = slice::from_raw_parts(self.data, self.data_size).iter().map(|c| *c as u8).collect::<Vec<_>>();
         Ok(Action {
             account,
             name,
             authorization,
             data
         })
+    }
+}
+
+impl Into<Action> for ActionFFI {
+    fn into(self) -> Action {
+        let account = self.account;
+        let name = self.name;
+        let (authorization, data) = unsafe {
+            (
+                slice::from_raw_parts(self.authorization, self.authorization_size).to_vec(),
+                slice::from_raw_parts(self.data, self.data_size).iter().map(|c| *c as u8).collect::<Vec<_>>()
+            )
+        };
+        Action { account, name, authorization, data }
+    }
+}
+
+#[derive(Clone, Debug)]
+#[repr(C)]
+pub struct Checksum256FFI {
+    pub id: *const Checksum256,
+    pub ids_size: usize,
+}
+
+impl Into<Vec<Checksum256>> for Checksum256FFI {
+    fn into(self) -> Vec<Checksum256> {
+        match self.ids_size.eq(&0) || self.id.is_null() {
+            false => unsafe { slice::from_raw_parts(self.id, self.ids_size).to_vec() },
+            true => vec![] // if id is null or size as 0
+        }
     }
 }
 
@@ -99,8 +132,9 @@ impl<K, V> FlatMapFFI<K, V> where K: Clone, V: Clone {
 #[derive(Clone, Debug)]
 #[repr(C)]
 pub struct IncrementalMerkleFFI {
-    _node_count: c_ulonglong,
-    _active_nodes: *const Checksum256,
+    pub _node_count: c_ulonglong,
+    pub _active_nodes: *const Checksum256,
+    pub _active_nodes_size: usize,
 }
 
 impl IncrementalMerkleFFI {
@@ -108,6 +142,18 @@ impl IncrementalMerkleFFI {
         let _node_count = self._node_count;
         let _active_nodes = slice::from_raw_parts(self._active_nodes, check_sum_len).to_vec();
         IncrementalMerkle::new(_node_count, _active_nodes)
+    }
+}
+
+impl Into<IncrementalMerkle> for IncrementalMerkleFFI {
+    fn into(self) -> IncrementalMerkle {
+        let _active_nodes = unsafe {
+            slice::from_raw_parts(self._active_nodes, self._active_nodes_size).to_vec()
+        };
+        for i in &_active_nodes {
+            dbg!(&i.to_string());
+        }
+        IncrementalMerkle::new(self._node_count, _active_nodes)
     }
 }
 
@@ -206,20 +252,21 @@ pub(crate) unsafe fn cstr_to_string(cstr: *const c_char) -> FFIResult<String> {
     Ok(rust_string)
 }
 
-pub(crate) fn generate_error(success: bool, err_msg: impl AsRef<str>) -> RustError {
-    let c_str = CString::new(err_msg.as_ref())
-                .unwrap_or(CString::new("unknow error type.")
-                .expect("failed to get raw pointer of error message"));
-    RustError {
+pub(crate) fn generate_result(success: bool, msg: impl AsRef<str>) -> RpcResponse {
+    let c_str = CString::new(msg.as_ref())
+                .unwrap_or(
+                    CString::new("unknow error type.").expect("failed to get raw pointer of error message")
+                );
+    RpcResponse {
         success,
-        err_msg: c_str.as_ptr()
+        msg: c_str.into_raw()
     }
 }
 
 // Todo, this error will return to c++ caller
 #[derive(Clone, Debug)]
 #[repr(C)]
-pub struct RustError {
+pub struct RpcResponse {
     success: bool,
-    err_msg: *const c_char,
+    msg: *const c_char, // this could be error message
 }

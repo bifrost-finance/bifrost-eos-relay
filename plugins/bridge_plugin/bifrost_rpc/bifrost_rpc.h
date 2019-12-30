@@ -20,6 +20,8 @@
 #include <string>
 #include <optional>
 #include <utility>
+
+#include <eosio/bridge_plugin/ffi_types.hpp>
 #include <eosio/chain_plugin/chain_plugin.hpp>
 #include <eosio/chain/types.hpp>
 
@@ -30,27 +32,25 @@ extern "C" {
 // bifrost rpc api
 
 void change_schedule(
-        char* url,
-        char* signer,
-        const eosio::incremental_merkle* merkle,
-        size_t merkle_checksum_len,
-        const eosio::signed_block_header *block_headers,
-        size_t block_headers_len,
-        const std::vector<std::vector<eosio::block_id_type>> block_ids_list
+   char* url,
+   char* signer,
+   const eosio::incremental_merkle* merkle,
+   size_t merkle_checksum_len,
+   const eosio::signed_block_header *block_headers,
+   size_t block_headers_len,
+   const std::vector<std::vector<eosio::block_id_type>> block_ids_list
 );
 
-bool prove_action(
-        const char* url,
-        const char* signer,
-        const char* action_json,
-        const char* receipt_json,
-        const eosio::block_id_type *action_merkle_paths,
-        size_t action_merkle_paths_len,
-        const eosio::block_id_type* _active_nodes,
-        size_t merkle_checksum_len,
-        uint64_t _node_count,
-        const char* blocks_json,
-        const char* ids_json
+eosio::rpc_result *prove_action(
+   const char* url,
+   const char* signer,
+   const eosio::action_ffi* act_ffi,
+   const eosio::incremental_merkle_ffi* imcre_merkle,
+   const char* receipt_json,
+   const eosio::block_id_type_list *action_merkle_paths,
+   const char* blocks_json,
+   const eosio::block_id_type_list* ids_list,
+   size_t ids_list_size
 );
 
 #ifdef __cplusplus
