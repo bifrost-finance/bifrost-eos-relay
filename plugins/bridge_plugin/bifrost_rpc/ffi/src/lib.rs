@@ -41,45 +41,48 @@ use ffi_types::*;
 pub extern "C" fn change_schedule(
     url: *const c_char,
     signer: *const c_char,
-    merkle: *const IncrementalMerkleFFI,
-    merkle_checksum_len: size_t,
-    block_headers: *const SignedBlockHeaderFFI, // vec<>
-    block_headers_len: size_t,
-    block_ids_list: *const *const Checksum256 // vec<vec<>>
+    imcre_merkle: *const IncrementalMerkleFFI,
+    blocks_ffi: *const SignedBlockHeaderFFI,
+    blocks_ffi_size: usize,
+    ids_list: *const Checksum256FFI,
+    ids_list_size: usize
 ) {
     // check pointers null or not
     // Todo, find a more elegant way to check these pointers null or not
-    match (url.is_null(), signer.is_null(), merkle.is_null(), block_headers.is_null(), block_ids_list.is_null()) {
+    match (url.is_null(), signer.is_null(), imcre_merkle.is_null(), blocks_ffi.is_null(), ids_list.is_null()) {
         (true, true, true, true, true) => {
-            info!("all are valid pointers.");
+            info!("all are null pointers.");
+            return;
         }
         _ => {
             return;
         }
     }
     let url = unsafe {
-        cstr_to_string(url).expect("failed to convert cstring to rust string.") // Todo, remove expect
+        char_to_string(url).expect("failed to convert cstring to rust string.") // Todo, remove expect
     };
     let signer = AccountKeyring::Alice.pair();
     let api = Api::new(format!("ws://{}", url)).set_signer(signer.clone());
 
-    let merkle = unsafe {
-        (*merkle).clone().into_incrementl_merkle(merkle_checksum_len)
+    let merkle: IncrementalMerkle = {
+        let imcre_merkle = unsafe { ptr::read(imcre_merkle) };
+        imcre_merkle.into()
     };
 
-    let block_headers = unsafe {
-        let ffi = slice::from_raw_parts(block_headers, block_headers_len);
-        ffi.into_iter().map(|f| f.into_signed_block_header()).collect::<Vec<_>>()
-    };
-
-    let block_ids_list = unsafe {
-        let ffi = slice::from_raw_parts(block_ids_list, 15).to_vec();
-        ffi.into_iter().map(|f|{
-//            slice::from_raw_parts(f, 11).iter().map(|c| ptr::read(c)).collect::<Vec<Checksum256>>()
-            slice::from_raw_parts(f, 10).to_vec()
+    let block_headers: Vec<SignedBlockHeader> = {
+        let blocks_ffi = unsafe { slice::from_raw_parts(blocks_ffi, blocks_ffi_size) };
+        blocks_ffi.iter().map(|block| {
+            let ffi = unsafe { ptr::read(block) };
+            ffi.into()
         }).collect::<Vec<_>>()
     };
-//    let block_ids_list: Vec<Vec<Checksum256>> = Vec::new();
+
+    let ids: Vec<Checksum256> = Vec::with_capacity(10);
+    let mut ids_lists: Vec<Vec<Checksum256>>= vec![ids; 15];
+    let ids_list_ffi = unsafe { slice::from_raw_parts(ids_list, ids_list_size) };
+    for (i, val) in ids_list_ffi.iter().enumerate() {
+        ids_lists[i] = val.clone().into();
+    }
 
     let proposal = compose_call!(
         api.metadata.clone(),
@@ -87,7 +90,7 @@ pub extern "C" fn change_schedule(
         "change_schedule",
         merkle,
         block_headers,
-        block_ids_list
+        ids_lists
     );
 
     let xt: UncheckedExtrinsicV4<_> = compose_extrinsic!(
@@ -110,9 +113,10 @@ pub extern "C" fn prove_action(
     signer: *const c_char,
     act_ffi: *const ActionFFI,
     imcre_merkle: *const IncrementalMerkleFFI,
-    receipt_json: *const c_char,
+    act_receipt: *const ActionReceiptFFI,
     action_merkle_paths: *const Checksum256FFI,
-    blocks_json: *const c_char,
+    blocks_ffi: *const SignedBlockHeaderFFI,
+    blocks_ffi_size: usize,
     ids_list: *const Checksum256FFI,
     ids_list_size: usize
 ) -> *const RpcResponse {
@@ -133,33 +137,18 @@ pub extern "C" fn prove_action(
         ffi.into()
     };
 
-    let block_headers = {
-        let blocks = unsafe {
-            cstr_to_string(blocks_json)
-        };
-        match blocks {
-            Ok(ref blocks) => {
-                let block_headers: Result<Vec<SignedBlockHeader>, _> = serde_json::from_str(blocks);
-                if block_headers.is_err() {
-                    let err = generate_result(false, "failed to deserialize SignedBlockHeader.");
-                    let box_err = Box::new(err);
-                    return Box::into_raw(box_err);
-                }
-                block_headers.unwrap()
-            }
-            Err(e) => {
-                let err = generate_result(false, e.to_string());
-                let box_err = Box::new(err);
-                return Box::into_raw(box_err);
-            },
-        }
+    let block_headers: Vec<SignedBlockHeader> = {
+        let blocks_ffi = unsafe { slice::from_raw_parts(blocks_ffi, blocks_ffi_size) };
+        blocks_ffi.iter().map(|block| {
+            let ffi = unsafe { ptr::read(block) };
+            ffi.into()
+        }).collect::<Vec<_>>()
     };
 
-    let action_receipt = unsafe {
-        cstr_to_string(receipt_json).expect("parse block header with failure.")
+    let action_receipt: ActionReceipt = {
+        let act_ffi = unsafe { ptr::read(act_receipt) };
+        act_ffi.into()
     };
-    let action_receipt: Result<ActionReceipt, _> = serde_json::from_str(&action_receipt);
-    let action_receipt = action_receipt.unwrap();
 
     let action_merkle_paths: Vec<_> = {
         let paths = unsafe { ptr::read(action_merkle_paths) };
@@ -167,7 +156,7 @@ pub extern "C" fn prove_action(
     };
 
     let url = unsafe {
-        cstr_to_string(url).expect("failed to convert cstring to rust string.")
+        char_to_string(url).expect("failed to convert cstring to rust string.")
     };
     let signer = AccountKeyring::Alice.pair();
     let api = Api::new(format!("ws://{}:9944", url)).set_signer(signer.clone());

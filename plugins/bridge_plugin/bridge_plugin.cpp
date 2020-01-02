@@ -127,13 +127,13 @@ namespace eosio {
          auto it = change_schedule_index.project<0>(status_iter);
          for (; it != change_schedule_index.end(); ++it) {
              ilog("sending data to bifrost for proving action.");
-             change_schedule(
-                "127.0.0.1",
-                "bob",
-                &(it->imcre_merkle), it->imcre_merkle._active_nodes.size(),
-                it->block_headers.data(), it->block_headers.size(),
-                it->block_id_lists
-             );
+//             change_schedule(
+//                "127.0.0.1",
+//                "bob",
+//                &(it->imcre_merkle), it->imcre_merkle._active_nodes.size(),
+//                it->block_headers.data(), it->block_headers.size(),
+//                it->block_id_lists
+//             );
          }
 
          change_schedule_timer_tick();
@@ -173,11 +173,15 @@ namespace eosio {
                 if (block_id_lists.size() >= 15 && block_id_lists.back().size() >= 10 && block_headers.size() >= 15) break;
              }
 
-             string blocks_json;
-             blocks_json = fc::json::to_string(block_headers);
+             signed_block_header_ffi *blocks_ffi = new signed_block_header_ffi[block_headers.size()];
+             for (size_t i = 0; i < block_headers.size(); ++i) {
+                auto p = new signed_block_header_ffi(block_headers[i]);
+                blocks_ffi[i] = *p;
+             }
+             ilog("converted block headers to string");
 
-             string receipt_json;
-             receipt_json = fc::json::to_string(ti->act_receipt);
+             auto receipts = convert_ffi(ti->act_receipt);
+             ilog("action receipt got serialized: ${hash}.", ("hash", ti->act_receipt));
 
              auto act_ffi = convert_ffi(ti->act);
 
@@ -202,13 +206,15 @@ namespace eosio {
                      "bob",
                      &act_ffi,
                      &merkle_ptr,
-                     receipt_json.data(),
+                     &receipts,
                      &merkle_paths,
-                     blocks_json.data(),
+                     blocks_ffi,
+                     block_headers.size(),
                      ids_list,
                      block_id_lists.size()
              );
              delete []ids_list;
+             delete []blocks_ffi;
 
              if (result) { // not null
                 if (result->success) {
