@@ -22,21 +22,68 @@ struct action_ffi {
    size_t                           authorization_size;
    const char                       *data;
    size_t                           data_size;
+   action_ffi(const action &act) {
+      account = act.account;
+      name = act.name;
+      authorization = act.authorization.data();
+      authorization_size = act.authorization.size();
+      data = act.data.data();
+      data_size = act.data.size();
+   }
+
+};
+
+struct block_id_type_ffi {
+   char                             *data;
+   size_t                           data_size;
+   block_id_type_ffi() {
+      data = nullptr;
+      data_size = 0;
+   }
+   block_id_type_ffi(const block_id_type &block_id) {
+      std::string id_str = (std::string)block_id;
+      data_size = id_str.size();
+      data = new char[data_size + 1];
+      strcpy(data, id_str.c_str());
+   }
+   ~block_id_type_ffi() {
+      if (data) delete []data;
+   }
 };
 
 struct block_id_type_list {
-   const block_id_type              *id;
+   block_id_type_ffi                *id;
    size_t                           ids_size;
    block_id_type_list() {
       id = nullptr;
       ids_size = 0;
    }
+   block_id_type_list(std::vector<block_id_type> &ids) {
+      ids_size = ids.size();
+      if (ids.empty()) {
+         id = nullptr;
+      } else {
+         id = new block_id_type_ffi[ids_size];
+         for (size_t i = 0; i < ids.size(); ++i) {
+            auto p = new block_id_type_ffi(ids[i]);
+            id[i] = *p;
+         }
+      }
+   }
+   ~block_id_type_list() {
+      if (id) delete []id;
+   }
 };
 
 struct incremental_merkle_ffi {
    uint64_t                         _node_count;
-   const block_id_type              *_active_nodes;
+   block_id_type                    *_active_nodes;
    size_t                           _active_nodes_size;
+   incremental_merkle_ffi(incremental_merkle &im) {
+      _node_count = im._node_count;
+      _active_nodes = im._active_nodes.data();
+      _active_nodes_size = im._active_nodes.size();
+   }
 };
 
 struct flat_map_ffi {
@@ -53,6 +100,18 @@ struct action_receipt_ffi {
    size_t                          auth_sequence_size;
    fc::unsigned_int                code_sequence = 0;
    fc::unsigned_int                abi_sequence  = 0;
+   action_receipt_ffi(const action_receipt& act_receipt) {
+      receiver = act_receipt.receiver;
+      act_digest = act_receipt.act_digest;
+      global_sequence = act_receipt.global_sequence;
+      recv_sequence = act_receipt.recv_sequence;
+
+      auth_sequence = &*act_receipt.auth_sequence.cbegin();
+      auth_sequence_size = act_receipt.auth_sequence.size();
+
+      code_sequence = act_receipt.code_sequence;
+      abi_sequence = act_receipt.abi_sequence;
+   }
 };
 
 struct extension {
@@ -68,6 +127,21 @@ struct extensions_type_ffi {
       extensions_size = 0;
       extensions = nullptr;
    }
+   extensions_type_ffi(const extensions_type &exts) {
+      auto len = exts.size();
+      extensions_size = len;
+      if (len == 0) {
+         extensions = nullptr;
+      } else {
+         extensions = new extension[len];
+         for (size_t i = 0; i < len; ++i) {
+            auto e = std::get<1>(exts[i]);
+            auto t = std::get<0>(exts[i]);
+            auto ext = new extension { t, e.data(), e.size() };
+            extensions[i] = *ext;
+         }
+      }
+   }
    ~extensions_type_ffi() {
       if (extensions) delete []extensions;
    }
@@ -76,12 +150,35 @@ struct extensions_type_ffi {
 struct producer_key_ffi {
    account_name                    producer_name;
    const char                      *block_signing_key;
+   producer_key_ffi() {
+      block_signing_key = nullptr;
+      producer_name = (uint64_t)0;
+   }
+   producer_key_ffi(const producer_key &pk) {
+      producer_name = pk.producer_name;
+
+      std::string sig = (std::string)pk.block_signing_key;
+      block_signing_key = sig.c_str();
+   }
 };
 
 struct producer_schedule_type_ffi {
    uint32_t                        version = 0;
    producer_key_ffi                *producers;
    size_t                          producers_size = 0;
+   producer_schedule_type_ffi(const producer_schedule_type &ps) {
+      version = ps.version;
+      producers_size = ps.producers.size();
+      if (producers_size == 0) {
+         producers = nullptr;
+      } else {
+         producers = new producer_key_ffi[producers_size];
+         for (size_t i = 0; i < producers_size; ++i) {
+            producer_key_ffi p = producer_key_ffi(ps.producers[i]);
+            memcpy(&producers[i], &p, sizeof(p));
+         }
+      }
+   }
    ~producer_schedule_type_ffi() {
       if (producers) delete []producers;
    }
@@ -97,7 +194,6 @@ struct block_header_ffi {
    uint32_t                         schedule_version = 0;
    producer_schedule_type_ffi       *new_producers;
    extensions_type_ffi              *header_extensions;
-//   block_header_ffi();
    ~block_header_ffi() {
       if (new_producers) delete new_producers;
       if (header_extensions) delete []header_extensions;
@@ -111,142 +207,45 @@ struct signed_block_header_ffi {
       block_header = nullptr;
       producer_signature = nullptr;
    }
-   signed_block_header_ffi(const signed_block_header &);
+   signed_block_header_ffi(const signed_block_header &header) {
+      block_header_ffi header_ffi;
+      header_ffi.timestamp = header.timestamp;
+      header_ffi.producer = header.producer;
+      header_ffi.confirmed = header.confirmed;
+      header_ffi.previous = header.previous.data();
+      header_ffi.transaction_mroot = header.transaction_mroot.data();
+      header_ffi.action_mroot = header.action_mroot.data();
+      header_ffi.schedule_version = header.schedule_version;
+
+      if (header.new_producers) {
+         auto h = producer_schedule_type_ffi(*(header.new_producers));
+         header_ffi.new_producers->version = h.version;
+         header_ffi.new_producers->producers = h.producers;
+         header_ffi.new_producers->producers_size = h.producers_size;
+      } else {
+         header_ffi.new_producers = nullptr;
+      }
+
+      auto e = extensions_type_ffi(header.header_extensions);
+      if (e.extensions_size == 0) {
+         header_ffi.header_extensions = nullptr;
+      } else {
+         header_ffi.header_extensions = new extensions_type_ffi[e.extensions_size];
+         header_ffi.header_extensions->extensions = e.extensions;
+         header_ffi.header_extensions->extensions_size = e.extensions_size;
+      }
+
+      std::string sig = (std::string)header.producer_signature;
+      producer_signature = new char[sig.size() + 1];
+      strcpy(producer_signature, sig.c_str());
+
+      block_header = new block_header_ffi();
+      memcpy(block_header, &header_ffi, sizeof(header_ffi));
+   }
    ~signed_block_header_ffi() {
       if (block_header) delete block_header;
       if (producer_signature) delete []producer_signature;
    }
 };
-
-action_ffi convert_ffi(const action &act) {
-   action_ffi act_ffi;
-   act_ffi.account = act.account;
-   act_ffi.name = act.name;
-   act_ffi.authorization = act.authorization.data();
-   act_ffi.authorization_size = act.authorization.size();
-   act_ffi.data = act.data.data();
-   act_ffi.data_size = act.data.size();
-
-   return act_ffi;
-}
-
-block_id_type_list convert_ffi(const std::vector<block_id_type> &ids) {
-   if (ids.empty()) {
-      return block_id_type_list();
-   }
-   block_id_type_list ids_ffi_ffi;
-   ids_ffi_ffi.id = ids.data();
-   ids_ffi_ffi.ids_size = ids.size();
-
-   return ids_ffi_ffi;
-}
-
-action_receipt_ffi convert_ffi(const action_receipt& act_receipt) {
-   action_receipt_ffi receipt_ffi;
-   receipt_ffi.receiver = act_receipt.receiver;
-   receipt_ffi.act_digest = act_receipt.act_digest;
-   receipt_ffi.global_sequence = act_receipt.global_sequence;
-   receipt_ffi.recv_sequence = act_receipt.recv_sequence;
-
-   receipt_ffi.auth_sequence = &*act_receipt.auth_sequence.cbegin();
-   receipt_ffi.auth_sequence_size = act_receipt.auth_sequence.size();
-
-   receipt_ffi.code_sequence = act_receipt.code_sequence;
-   receipt_ffi.abi_sequence = act_receipt.abi_sequence;
-
-   return receipt_ffi;
-}
-
-producer_key_ffi convert_ffi(const producer_key &pk) {
-   producer_key_ffi key_ffi;
-   key_ffi.producer_name = pk.producer_name;
-
-   std::string sig = static_cast<std::string>(pk.block_signing_key);
-   key_ffi.block_signing_key = sig.c_str();
-
-   return key_ffi;
-}
-
-producer_schedule_type_ffi convert_ffi(const producer_schedule_type &ps) {
-   producer_schedule_type_ffi ps_ffi;
-   ps_ffi.version = ps.version;
-   ps_ffi.producers_size = ps.producers.size();
-   if (ps_ffi.producers_size == 0) {
-      ps_ffi.producers = nullptr;
-   } else {
-      ps_ffi.producers = new producer_key_ffi[ps_ffi.producers_size];
-      for (size_t i = 0; i < ps_ffi.producers_size; ++i) {
-         producer_key_ffi p = convert_ffi(ps.producers[i]);
-         ps_ffi.producers[i].producer_name = p.producer_name;
-         ps_ffi.producers[i].block_signing_key = p.block_signing_key;
-      }
-   }
-
-   return ps_ffi;
-}
-
-extensions_type_ffi convert_ffi(const extensions_type &ext) {
-   auto len = ext.size();
-   if (len == 0) return extensions_type_ffi();
-
-   extensions_type_ffi ext_ffi;
-   ext_ffi.extensions_size = len;
-   ext_ffi.extensions = new extension[len];
-   for (size_t i = 0; i < len; ++i) {
-      auto e = std::get<1>(ext[i]);
-      ext_ffi.extensions[i] = extension {
-         std::get<0>(ext[i]),
-         e.data(),
-         e.size(),
-      };
-   }
-
-   return ext_ffi;
-}
-
-incremental_merkle_ffi convert_ffi(const incremental_merkle &im) {
-   incremental_merkle_ffi im_ffi;
-   im_ffi._node_count = im._node_count;
-   im_ffi._active_nodes = im._active_nodes.data();
-   im_ffi._active_nodes_size = im._active_nodes.size();
-
-   return im_ffi;
-}
-
-signed_block_header_ffi::signed_block_header_ffi(const signed_block_header &header) {
-   block_header_ffi header_ffi;
-   header_ffi.timestamp = header.timestamp;
-   header_ffi.producer = header.producer;
-   header_ffi.confirmed = header.confirmed;
-   header_ffi.previous = header.previous.data();
-   header_ffi.transaction_mroot = header.transaction_mroot.data();
-   header_ffi.action_mroot = header.action_mroot.data();
-   header_ffi.schedule_version = header.schedule_version;
-
-   if (header.new_producers) {
-      auto h = convert_ffi(*(header.new_producers));
-      header_ffi.new_producers->version = h.version;
-      header_ffi.new_producers->producers = h.producers;
-      header_ffi.new_producers->producers_size = h.producers_size;
-   } else {
-      header_ffi.new_producers = nullptr;
-   }
-
-   auto e = convert_ffi(header.header_extensions);
-   if (e.extensions_size == 0) {
-      header_ffi.header_extensions = nullptr;
-   } else {
-      header_ffi.header_extensions = new extensions_type_ffi[e.extensions_size];
-      header_ffi.header_extensions->extensions = e.extensions;
-      header_ffi.header_extensions->extensions_size = e.extensions_size;
-   }
-
-   std::string sig = static_cast<std::string>(header.producer_signature);
-   producer_signature = new char[sig.size() + 1];
-   strcpy(producer_signature, sig.c_str());
-
-   block_header = new block_header_ffi();
-   memcpy(block_header, &header_ffi, sizeof(header_ffi));
-}
 
 }

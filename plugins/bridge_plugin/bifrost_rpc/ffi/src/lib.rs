@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Bifrost.  If not, see <http://www.gnu.org/licenses/>.
 
-use eos_chain::{Action, ActionReceipt, Checksum256, Digest, IncrementalMerkle, SignedBlockHeader};
+use eos_chain::{Action, ActionReceipt, Checksum256, IncrementalMerkle, SignedBlockHeader};
 use log::info;
 use keyring::AccountKeyring;
 use primitives::crypto::Pair;
@@ -24,15 +24,12 @@ use rpc_client::{
     extrinsic::xt_primitives::UncheckedExtrinsicV4,
 };
 use std::{
-    mem,
-    ptr,
+    convert::TryInto,
+    error::Error as _,
     os::raw::c_char,
+    ptr,
     slice,
 };
-
-use std::fs::File;
-use std::io::prelude::*;
-use std::str::FromStr;
 
 mod ffi_types;
 use ffi_types::*;
@@ -43,45 +40,60 @@ pub extern "C" fn change_schedule(
     signer: *const c_char,
     imcre_merkle: *const IncrementalMerkleFFI,
     blocks_ffi: *const SignedBlockHeaderFFI,
-    blocks_ffi_size: usize,
-    ids_list: *const Checksum256FFI,
-    ids_list_size: usize
-) {
+    blocks_ffi_size: size_t,
+    ids_list: *const Checksum256ListFFI,
+    ids_list_size: size_t
+) -> *const RpcResponse {
     // check pointers null or not
-    // Todo, find a more elegant way to check these pointers null or not
     match (url.is_null(), signer.is_null(), imcre_merkle.is_null(), blocks_ffi.is_null(), ids_list.is_null()) {
-        (true, true, true, true, true) => {
-            info!("all are null pointers.");
-            return;
-        }
+        (false, false, false, false, false) => (),
         _ => {
-            return;
+            return generate_raw_result(false, "cannot send action to bifrost node to prove it due to there're null points");
         }
     }
-    let url = unsafe {
-        char_to_string(url).expect("failed to convert cstring to rust string.") // Todo, remove expect
+
+    let url = {
+        let url = char_to_string(url);
+        if url.is_err() {
+            return generate_raw_result(false, "This is not an valid bifrost node address.");
+        }
+        url.unwrap()
     };
     let signer = AccountKeyring::Alice.pair();
     let api = Api::new(format!("ws://{}", url)).set_signer(signer.clone());
 
     let merkle: IncrementalMerkle = {
         let imcre_merkle = unsafe { ptr::read(imcre_merkle) };
-        imcre_merkle.into()
+        let r: Result<IncrementalMerkle, _> = imcre_merkle.try_into();
+        if r.is_err() {
+            return generate_raw_result(false, r.unwrap_err().description());
+        }
+        r.unwrap()
     };
 
     let block_headers: Vec<SignedBlockHeader> = {
         let blocks_ffi = unsafe { slice::from_raw_parts(blocks_ffi, blocks_ffi_size) };
-        blocks_ffi.iter().map(|block| {
+        let mut block_headers: Vec<_> = Vec::with_capacity(blocks_ffi_size);
+        for block in blocks_ffi.iter() {
             let ffi = unsafe { ptr::read(block) };
-            ffi.into()
-        }).collect::<Vec<_>>()
+            let r: Result<SignedBlockHeader, Error> = ffi.try_into();
+            if r.is_err() {
+                return generate_raw_result(false, r.unwrap_err().description());
+            }
+            block_headers.push(r.unwrap())
+        }
+        block_headers
     };
 
     let ids: Vec<Checksum256> = Vec::with_capacity(10);
     let mut ids_lists: Vec<Vec<Checksum256>>= vec![ids; 15];
     let ids_list_ffi = unsafe { slice::from_raw_parts(ids_list, ids_list_size) };
-    for (i, val) in ids_list_ffi.iter().enumerate() {
-        ids_lists[i] = val.clone().into();
+    for ids in ids_list_ffi.iter() {
+        let r: Result<Vec<Checksum256>, _> = ids.clone().try_into();
+        if r.is_err() {
+            return generate_raw_result(false, r.unwrap_err().description());
+        }
+        ids_lists.push(r.unwrap())
     }
 
     let proposal = compose_call!(
@@ -100,11 +112,18 @@ pub extern "C" fn change_schedule(
         proposal
     );
 
-    // Unable to decode Vec on index 2 createType(ExtrinsicV4):: Source is too large
     println!("[+] Composed extrinsic: {:?}\n", xt);
     // send and watch extrinsic until finalized
-    let tx_hash = api.send_extrinsic(xt.hex_encode()).unwrap();
-    println!("[+] Transaction got finalized. Hash: {:?}\n", tx_hash);
+    match api.send_extrinsic(xt.hex_encode()) {
+        Ok(tx_hash) => {
+            println!("[+] Transaction got finalized. Hash: {:?}\n", tx_hash);
+            generate_raw_result(true, tx_hash.to_string())
+        }
+        Err(e) => {
+            println!("[+] Transaction got failure due to: {:?}\n", e);
+            generate_raw_result(true, e.to_string())
+        }
+    }
 }
 
 #[no_mangle]
@@ -114,49 +133,90 @@ pub extern "C" fn prove_action(
     act_ffi: *const ActionFFI,
     imcre_merkle: *const IncrementalMerkleFFI,
     act_receipt: *const ActionReceiptFFI,
-    action_merkle_paths: *const Checksum256FFI,
+    action_merkle_paths: *const Checksum256ListFFI,
     blocks_ffi: *const SignedBlockHeaderFFI,
-    blocks_ffi_size: usize,
-    ids_list: *const Checksum256FFI,
-    ids_list_size: usize
+    blocks_ffi_size: size_t,
+    ids_list: *const Checksum256ListFFI,
+    ids_list_size: size_t
 ) -> *const RpcResponse {
-    let ids: Vec<Checksum256> = Vec::with_capacity(10);
-    let mut ids_lists: Vec<Vec<Checksum256>>= vec![ids; 15];
-    let ids_list_ffi = unsafe { slice::from_raw_parts(ids_list, ids_list_size) };
-    for (i, val) in ids_list_ffi.iter().enumerate() {
-        ids_lists[i] = val.clone().into();
+    match (
+        url.is_null(), signer.is_null(), act_ffi.is_null(), imcre_merkle.is_null(),
+        act_receipt.is_null(), action_merkle_paths.is_null(), blocks_ffi.is_null(), ids_list.is_null()
+    ) {
+        (false, false, false, false, false, false, false, false) => (),
+        _ => { // if there's any null pointer, just return
+            return generate_raw_result(false, "cannot send action to bifrost node to prove it due to there're null points");
+        }
     }
-
-    let merkle: IncrementalMerkle = {
-        let imcre_merkle = unsafe { ptr::read(imcre_merkle) };
-        imcre_merkle.into()
-    };
 
     let action: Action = {
         let ffi = unsafe { ptr::read(act_ffi) };
-        ffi.into()
+        let r: Result<Action, _> = ffi.try_into();
+        if r.is_err() {
+            return generate_raw_result(false, r.unwrap_err().description());
+        }
+        r.unwrap()
     };
 
-    let block_headers: Vec<SignedBlockHeader> = {
-        let blocks_ffi = unsafe { slice::from_raw_parts(blocks_ffi, blocks_ffi_size) };
-        blocks_ffi.iter().map(|block| {
-            let ffi = unsafe { ptr::read(block) };
-            ffi.into()
-        }).collect::<Vec<_>>()
+    let merkle: IncrementalMerkle = {
+        let imcre_merkle = unsafe { ptr::read(imcre_merkle) };
+        let r: Result<IncrementalMerkle, _> = imcre_merkle.try_into();
+        if r.is_err() {
+            return generate_raw_result(false, r.unwrap_err().description());
+        }
+        r.unwrap()
     };
 
     let action_receipt: ActionReceipt = {
         let act_ffi = unsafe { ptr::read(act_receipt) };
-        act_ffi.into()
+        let r: Result<ActionReceipt, _> = act_ffi.try_into();
+        if r.is_err() {
+            return generate_raw_result(false, r.unwrap_err().description());
+        }
+        r.unwrap()
     };
 
-    let action_merkle_paths: Vec<_> = {
+    let action_merkle_paths: Vec<Checksum256> = {
         let paths = unsafe { ptr::read(action_merkle_paths) };
-        paths.into()
+        let r: Result<Vec<Checksum256>, _> = paths.try_into();
+        if r.is_err() {
+            return generate_raw_result(false, r.unwrap_err().description());
+        }
+        r.unwrap()
     };
 
-    let url = unsafe {
-        char_to_string(url).expect("failed to convert cstring to rust string.")
+    let block_headers: Vec<SignedBlockHeader> = {
+        let blocks_ffi = unsafe { slice::from_raw_parts(blocks_ffi, blocks_ffi_size) };
+        let mut block_headers: Vec<_> = Vec::with_capacity(blocks_ffi_size);
+        for block in blocks_ffi.iter() {
+            let ffi = unsafe { ptr::read(block) };
+            let r: Result<SignedBlockHeader, Error> = ffi.try_into();
+            if r.is_err() {
+                return generate_raw_result(false, r.unwrap_err().description());
+            }
+            dbg!(&r.as_ref().unwrap().to_string());
+            block_headers.push(r.unwrap())
+        }
+        block_headers
+    };
+
+    let ids: Vec<Checksum256> = Vec::with_capacity(10);
+    let mut ids_lists: Vec<Vec<Checksum256>>= vec![ids; 15];
+    let ids_list_ffi = unsafe { slice::from_raw_parts(ids_list, ids_list_size) };
+    for ids in ids_list_ffi.iter() {
+        let r: Result<Vec<Checksum256>, _> = ids.clone().try_into();
+        if r.is_err() {
+            return generate_raw_result(false, r.unwrap_err().description());
+        }
+        ids_lists.push(r.unwrap())
+    }
+
+    let url = {
+        let url = char_to_string(url);
+        if url.is_err() {
+            return generate_raw_result(false, "This is not an valid bifrost node address.");
+        }
+        url.unwrap()
     };
     let signer = AccountKeyring::Alice.pair();
     let api = Api::new(format!("ws://{}:9944", url)).set_signer(signer.clone());
@@ -182,10 +242,14 @@ pub extern "C" fn prove_action(
 
     println!("[+] Composed extrinsic: {:?}\n", xt);
     // send and watch extrinsic until finalized
-    let tx_hash = api.send_extrinsic(xt.hex_encode()).unwrap();
-    println!("[+] Transaction got finalized. Hash: {:?}\n", tx_hash);
-
-    let result = generate_result(true, tx_hash.to_string());
-    let box_result = Box::new(result);
-    Box::into_raw(box_result)
+    match api.send_extrinsic(xt.hex_encode()) {
+        Ok(tx_hash) => {
+            println!("[+] Transaction got finalized. Hash: {:?}\n", tx_hash);
+            generate_raw_result(true, tx_hash.to_string())
+        }
+        Err(e) => {
+            println!("[+] Transaction got failure due to: {:?}\n", e);
+            generate_raw_result(true, e.to_string())
+        }
+    }
 }

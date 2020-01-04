@@ -31,27 +31,27 @@ extern "C" {
 
 // bifrost rpc api
 
-void change_schedule(
-   char* url,
-   char* signer,
-   const eosio::incremental_merkle_ffi* imcre_merkle,
+eosio::rpc_result *change_schedule(
+   const char                           *url,
+   const char                           *signer,
+   const eosio::incremental_merkle_ffi  *imcre_merkle,
    const eosio::signed_block_header_ffi *blocks_ffi,
-   size_t blocks_ffi_size,
-   const eosio::block_id_type_list* ids_list,
-   size_t ids_list_size
+   size_t                               blocks_ffi_size,
+   const eosio::block_id_type_list      *ids_list,
+   size_t                               ids_list_size
 );
 
 eosio::rpc_result *prove_action(
-   const char* url,
-   const char* signer,
-   const eosio::action_ffi* act_ffi,
-   const eosio::incremental_merkle_ffi* imcre_merkle,
-   const eosio::action_receipt_ffi* act_receipt,
-   const eosio::block_id_type_list *action_merkle_paths,
+   const char                           *url,
+   const char                           *signer,
+   const eosio::action_ffi              *act_ffi,
+   const eosio::incremental_merkle_ffi  *imcre_merkle,
+   const eosio::action_receipt_ffi      *act_receipt,
+   const eosio::block_id_type_list      *action_merkle_paths,
    const eosio::signed_block_header_ffi *blocks_ffi,
-   size_t blocks_ffi_size,
-   const eosio::block_id_type_list* ids_list,
-   size_t ids_list_size
+   size_t                               blocks_ffi_size,
+   const eosio::block_id_type_list      *ids_list,
+   size_t                               ids_list_size
 );
 
 #ifdef __cplusplus
