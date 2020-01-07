@@ -130,8 +130,7 @@ pub struct Checksum256ListFFI {
 impl TryInto<Vec<Checksum256>> for Checksum256ListFFI {
     type Error = Error;
     fn try_into(self) -> Result<Vec<Checksum256>, Self::Error> {
-//        if self.ids.is_null() {
-        if false { // todo, why null but can read back
+        if self.ids.is_null() {
             Err(Error::NullPtr)
         } else {
             let ids_slice = unsafe { slice::from_raw_parts(self.ids, self.ids_size) };
@@ -200,7 +199,10 @@ pub struct IncrementalMerkleFFI {
 impl TryInto<IncrementalMerkle> for IncrementalMerkleFFI {
     type Error = Error;
     fn try_into(self) -> Result<IncrementalMerkle, Self::Error> {
+        dbg!(self._active_nodes);
         if self._active_nodes.is_null() {
+//        if false {
+            dbg!("IncrementalMerkleFFI is null");
             Err(Error::NullPtr)
         } else {
             let _active_nodes = unsafe {

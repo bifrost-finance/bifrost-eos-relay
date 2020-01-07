@@ -38,6 +38,7 @@ struct bridge_blocks {
 
 struct bridge_change_schedule {
    uint32_t                                 block_num = 0; // the block has new producer schedule
+   incremental_merkle                       imcre_merkle;
    std::vector<block_state>                 bs;
    uint8_t                                  status = 0;
 };
@@ -46,6 +47,7 @@ struct bridge_prove_action {
    uint32_t                                 block_num = 0; // the block has transfer action
    action                                   act;
    action_receipt                           act_receipt;
+   incremental_merkle                       imcre_merkle;
    std::vector<block_id_type>               act_receipt_merkle_paths;
    std::vector<block_state>                 bs;
    uint8_t                                  status = 0;

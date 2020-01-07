@@ -91,13 +91,13 @@ namespace eosio {
       void open_db();
       void close_db();
 
-      std::tuple<incremental_merkle, std::vector<signed_block_header>, std::vector<std::vector<block_id_type>>> collect_incremental_merkle_and_blocks(bridge_change_schedule_index::iterator &);
-      std::tuple<incremental_merkle, std::vector<signed_block_header>, std::vector<std::vector<block_id_type>>> collect_incremental_merkle_and_blocks(bridge_prove_action_index::iterator &);
+      std::tuple<std::vector<signed_block_header>, std::vector<std::vector<block_id_type>>> collect_incremental_merkle_and_blocks(bridge_change_schedule_index::iterator &);
+      std::tuple<std::vector<signed_block_header>, std::vector<std::vector<block_id_type>>> collect_incremental_merkle_and_blocks(bridge_prove_action_index::iterator &);
 
-      void filter_action(const std::vector<action_trace> &, const std::vector<action_receipt> &);
+      void filter_action(const std::string &contract, const std::vector<action_trace> &, const std::vector<action_receipt> &);
    };
 
-   std::tuple<incremental_merkle, std::vector<signed_block_header>, std::vector<std::vector<block_id_type>>> bridge_plugin_impl::collect_incremental_merkle_and_blocks(bridge_prove_action_index::iterator &ti) {
+   std::tuple<std::vector<signed_block_header>, std::vector<std::vector<block_id_type>>> bridge_plugin_impl::collect_incremental_merkle_and_blocks(bridge_prove_action_index::iterator &ti) {
       auto bl_state = block_state();
       std::vector<signed_block_header> block_headers; // can reserve a buffer to store id
       block_headers.reserve(15);
@@ -129,11 +129,16 @@ namespace eosio {
       // get incremental_merkle
       auto pre_block_state = block_index.find(bl_state.header.previous);
       auto blockroot_merkle = pre_block_state->bls.blockroot_merkle;
+      if (blockroot_merkle._node_count != 0)  {
+         prove_action_index.modify(ti, [&](auto &entry) {
+            entry.imcre_merkle = blockroot_merkle;
+         });
+      }
 
-      return std::make_tuple(blockroot_merkle, block_headers, block_id_lists);
+      return std::make_tuple(block_headers, block_id_lists);
    }
 
-   std::tuple<incremental_merkle, std::vector<signed_block_header>, std::vector<std::vector<block_id_type>>> bridge_plugin_impl::collect_incremental_merkle_and_blocks(bridge_change_schedule_index::iterator &ti) {
+   std::tuple<std::vector<signed_block_header>, std::vector<std::vector<block_id_type>>> bridge_plugin_impl::collect_incremental_merkle_and_blocks(bridge_change_schedule_index::iterator &ti) {
       auto bl_state = block_state();
       std::vector<signed_block_header> block_headers; // can reserve a buffer to store id
       block_headers.reserve(15);
@@ -165,8 +170,13 @@ namespace eosio {
       // get incremental_merkle
       auto pre_block_state = block_index.find(bl_state.header.previous);
       auto blockroot_merkle = pre_block_state->bls.blockroot_merkle;
+      if (blockroot_merkle._node_count != 0) {
+         change_schedule_index.modify(ti, [&](auto &entry) {
+            entry.imcre_merkle = blockroot_merkle;
+         });
+      }
 
-      return std::make_tuple(blockroot_merkle, block_headers, block_id_lists);
+      return std::make_tuple(block_headers, block_id_lists);
    }
 
    void bridge_plugin_impl::change_schedule_timer_tick() {
@@ -176,9 +186,9 @@ namespace eosio {
             if (ti->status != 1) continue;
 
             auto tuple = collect_incremental_merkle_and_blocks(ti);
-            incremental_merkle blockroot_merkle = std::get<0>(tuple);
-            auto block_headers = std::get<1>(tuple);
-            auto block_id_lists = std::get<2>(tuple);
+            incremental_merkle blockroot_merkle = ti->imcre_merkle;
+            auto block_headers = std::get<0>(tuple);
+            auto block_id_lists = std::get<1>(tuple);
 
             signed_block_header_ffi *blocks_ffi = new signed_block_header_ffi[block_headers.size()];
             for (size_t i = 0; i < block_headers.size(); ++i) {
@@ -237,9 +247,9 @@ namespace eosio {
             if (ti->status != 1) continue;
 
             auto tuple = collect_incremental_merkle_and_blocks(ti);
-            incremental_merkle blockroot_merkle = std::get<0>(tuple);
-            auto block_headers = std::get<1>(tuple);
-            auto block_id_lists = std::get<2>(tuple);
+            incremental_merkle blockroot_merkle = ti->imcre_merkle;
+            auto block_headers = std::get<0>(tuple);
+            auto block_id_lists = std::get<1>(tuple);
 
             signed_block_header_ffi *blocks_ffi = new signed_block_header_ffi[block_headers.size()];
             for (size_t i = 0; i < block_headers.size(); ++i) {
@@ -331,7 +341,7 @@ namespace eosio {
       auto blk = block->block;
       if (blk->new_producers) {
          // insert blocks
-         auto trace = bridge_change_schedule { block->block_num, std::vector<block_state>(), 0};
+         auto trace = bridge_change_schedule { block->block_num, incremental_merkle(), std::vector<block_state>(), 0};
          change_schedule_index.insert(trace);
       }
 
@@ -350,6 +360,7 @@ namespace eosio {
    }
 
    void bridge_plugin_impl::filter_action(
+      const std::string &contract,
       const std::vector<action_trace> &action_traces,
       const std::vector<action_receipt> &receipts
    ) {
@@ -362,11 +373,11 @@ namespace eosio {
             action_transfer der_at;
             fc::raw::unpack<action_transfer>(act.data, der_at);
             ilog("money from: ${from}", ("from", der_at.from));
-            ilog("money from: ${to}", ("to", der_at.to));
+            ilog("money to: ${to}", ("to", der_at.to));
             ilog("action traces from: ${to}", ("to", action_traces));
 
             if (!action_traces[i].receipt) return;
-            if (der_at.from == name("jim") || der_at.to == name("alex")) index = action_traces[i].action_ordinal;
+            if (der_at.from == name(contract) || der_at.to == name(contract)) index = action_traces[i].action_ordinal;
          }
       }
 
@@ -390,6 +401,7 @@ namespace eosio {
         action_traces[index].block_num,
         act,
         *receipt,
+        incremental_merkle(),
         action_merkle_paths,
         std::vector<block_state>(),
         0
@@ -402,7 +414,7 @@ namespace eosio {
       auto acts = std::get<1>(t);
 
       auto action_traces = tt->action_traces;
-      filter_action(action_traces, acts);
+      filter_action("bifrost", action_traces, acts);
    }
 
    void bridge_plugin_impl::open_db() {

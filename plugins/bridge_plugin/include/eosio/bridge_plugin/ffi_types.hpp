@@ -37,7 +37,7 @@ struct block_id_type_ffi {
    char                             *data;
    size_t                           data_size;
    block_id_type_ffi() {
-      data = nullptr;
+      data = new char[1];
       data_size = 0;
    }
    block_id_type_ffi(const block_id_type &block_id) {
@@ -55,13 +55,13 @@ struct block_id_type_list {
    block_id_type_ffi                *id;
    size_t                           ids_size;
    block_id_type_list() {
-      id = nullptr;
+      id = new block_id_type_ffi();
       ids_size = 0;
    }
    block_id_type_list(std::vector<block_id_type> &ids) {
       ids_size = ids.size();
       if (ids.empty()) {
-         id = nullptr;
+         id = new block_id_type_ffi();;
       } else {
          id = new block_id_type_ffi[ids_size];
          for (size_t i = 0; i < ids.size(); ++i) {
@@ -77,18 +77,13 @@ struct block_id_type_list {
 
 struct incremental_merkle_ffi {
    uint64_t                         _node_count;
-   block_id_type                    *_active_nodes;
+   const block_id_type              *_active_nodes;
    size_t                           _active_nodes_size;
-   incremental_merkle_ffi(incremental_merkle &im) {
+   incremental_merkle_ffi(const incremental_merkle &im) {
       _node_count = im._node_count;
       _active_nodes = im._active_nodes.data();
       _active_nodes_size = im._active_nodes.size();
    }
-};
-
-struct flat_map_ffi {
-   const std::pair<account_name,uint64_t> *auth_sequence;
-   size_t                          auth_sequence_size;
 };
 
 struct action_receipt_ffi {
@@ -98,8 +93,8 @@ struct action_receipt_ffi {
    uint64_t                        recv_sequence   = 0;
    const std::pair<account_name,uint64_t> *auth_sequence;
    size_t                          auth_sequence_size;
-   fc::unsigned_int                code_sequence = 0;
-   fc::unsigned_int                abi_sequence  = 0;
+   fc::unsigned_int                code_sequence   = 0;
+   fc::unsigned_int                abi_sequence    = 0;
    action_receipt_ffi(const action_receipt& act_receipt) {
       receiver = act_receipt.receiver;
       act_digest = act_receipt.act_digest;

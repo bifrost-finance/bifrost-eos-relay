@@ -36,13 +36,13 @@ use ffi_types::*;
 
 #[no_mangle]
 pub extern "C" fn change_schedule(
-    url: *const c_char,
-    signer: *const c_char,
-    imcre_merkle: *const IncrementalMerkleFFI,
-    blocks_ffi: *const SignedBlockHeaderFFI,
+    url:             *const c_char,
+    signer:          *const c_char,
+    imcre_merkle:    *const IncrementalMerkleFFI,
+    blocks_ffi:      *const SignedBlockHeaderFFI,
     blocks_ffi_size: size_t,
-    ids_list: *const Checksum256ListFFI,
-    ids_list_size: size_t
+    ids_list:        *const Checksum256ListFFI,
+    ids_list_size:   size_t
 ) -> *const RpcResponse {
     // check pointers null or not
     match (url.is_null(), signer.is_null(), imcre_merkle.is_null(), blocks_ffi.is_null(), ids_list.is_null()) {
@@ -128,16 +128,16 @@ pub extern "C" fn change_schedule(
 
 #[no_mangle]
 pub extern "C" fn prove_action(
-    url: *const c_char,
-    signer: *const c_char,
-    act_ffi: *const ActionFFI,
-    imcre_merkle: *const IncrementalMerkleFFI,
-    act_receipt: *const ActionReceiptFFI,
+    url:                 *const c_char,
+    signer:              *const c_char,
+    act_ffi:             *const ActionFFI,
+    imcre_merkle:        *const IncrementalMerkleFFI,
+    act_receipt:         *const ActionReceiptFFI,
     action_merkle_paths: *const Checksum256ListFFI,
-    blocks_ffi: *const SignedBlockHeaderFFI,
-    blocks_ffi_size: size_t,
-    ids_list: *const Checksum256ListFFI,
-    ids_list_size: size_t
+    blocks_ffi:          *const SignedBlockHeaderFFI,
+    blocks_ffi_size:     size_t,
+    ids_list:            *const Checksum256ListFFI,
+    ids_list_size:       size_t
 ) -> *const RpcResponse {
     match (
         url.is_null(), signer.is_null(), act_ffi.is_null(), imcre_merkle.is_null(),
