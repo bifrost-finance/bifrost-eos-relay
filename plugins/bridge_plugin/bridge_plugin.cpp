@@ -64,6 +64,11 @@ namespace eosio {
             >
     > bridge_prove_action_index;
 
+   struct bifrost_config {
+      std::string bifrost_addr;
+      std::string bifrost_account;
+   };
+
    class bridge_plugin_impl {
    public:
       chain_plugin *chain_plug = nullptr;
@@ -77,6 +82,8 @@ namespace eosio {
       bridge_block_index            block_index;
       bridge_change_schedule_index  change_schedule_index;
       bridge_prove_action_index     prove_action_index;
+
+      bifrost_config config;
 
       fc::path datadir;
 
@@ -207,17 +214,15 @@ namespace eosio {
                }
                ids_list[i] = block_id_type_list(block_id_lists[i]);
             }
-            delete []blocks_ffi;
-            delete []ids_list;
 
             rpc_result *result = change_schedule(
-                "127.0.0.1",
-                "bob",
-                &merkle_ptr,
-                blocks_ffi,
-                block_headers.size(),
-                ids_list,
-                block_id_lists.size()
+               config.bifrost_addr.data(),
+               config.bifrost_account.data(),
+               &merkle_ptr,
+               blocks_ffi,
+               block_headers.size(),
+               ids_list,
+               block_id_lists.size()
             );
 
             if (result) { // not null
@@ -231,6 +236,9 @@ namespace eosio {
                   ilog("failed to send data to bifrost for changing schedule due to: ${err}.", ("err", std::string(result->msg)));
                }
             }
+
+            delete []blocks_ffi;
+            delete []ids_list;
          }
 
          change_schedule_timer_tick();
@@ -272,21 +280,20 @@ namespace eosio {
                block_id_type_list *p = new block_id_type_list(block_id_lists[i]);
                ids_list[i] = *p;
             }
+            ilog("all ids list: ${list}", ("list", block_id_lists));
 
             rpc_result *result = prove_action(
-                     "127.0.0.1",
-                     "bob",
-                     &act_ffi,
-                     &merkle_ptr,
-                     &receipts,
-                     &merkle_paths,
-                     blocks_ffi,
-                     block_headers.size(),
-                     ids_list,
-                     block_id_lists.size()
+               config.bifrost_addr.data(),
+               config.bifrost_account.data(),
+               &act_ffi,
+               &merkle_ptr,
+               &receipts,
+               &merkle_paths,
+               blocks_ffi,
+               block_headers.size(),
+               ids_list,
+               block_id_lists.size()
             );
-            delete []ids_list;
-            delete []blocks_ffi;
 
             if (result) { // not null
                if (result->success) {
@@ -299,6 +306,9 @@ namespace eosio {
                   ilog("failed to send data to bifrost for proving action due to: ${err}.", ("err", std::string(result->msg)));
                }
             }
+
+            delete []ids_list;
+            delete []blocks_ffi;
          }
 
          prove_action_timer_tick();
@@ -367,6 +377,12 @@ namespace eosio {
       int index = -1;
       std::vector<block_id_type> act_receipts_digs;
       for (size_t i = 0; i < action_traces.size(); ++i) {
+         // in case action traces has errors
+         if (action_traces[i].except) {
+            ilog("An invalid action occured due to: ${reason}", ("reason", action_traces[i].except));
+            return;
+         }
+
          auto act = action_traces[i].act;
          auto receiver = action_traces[i].receiver;
          if (act.account == name("eosio.token") && act.name == name("transfer") && receiver == name("eosio.token")) {
@@ -414,7 +430,7 @@ namespace eosio {
       auto acts = std::get<1>(t);
 
       auto action_traces = tt->action_traces;
-      filter_action("bifrost", action_traces, acts);
+      filter_action(config.bifrost_account, action_traces, acts);
    }
 
    void bridge_plugin_impl::open_db() {
@@ -506,8 +522,11 @@ namespace eosio {
 
    void bridge_plugin::set_program_options(options_description &, options_description &cfg) {
       cfg.add_options()
-              ("option-name", bpo::value<string>()->default_value("default value"),
-               "Option Description");
+              ("bifrost-node", bpo::value<string>()->default_value("127.0.0.1"),
+               "This is sopposed to be a bifrost node address like: 127.0.0.1");
+      cfg.add_options()
+              ("bifrost-account", bpo::value<string>()->default_value("bob"),
+               "This is sopposed to be a bifrost account like: alice or bob");
       ilog("bridge_plugin::set_program_options.");
    }
 
@@ -515,8 +534,17 @@ namespace eosio {
       ilog("bridge_plugin::plugin_initializ.");
 
       try {
-         if (options.count("option-name")) {
+         if (options.count("bifrost-node") && options.count("bifrost-account")) {
             // Handle the option
+            auto address = options.at("bifrost-node").as<std::string>();
+            auto account = options.at("bifrost-account").as<std::string>();
+            ilog("address: ${addr}.", ("addr", address));
+            ilog("account: ${addr}.", ("addr", account));
+            my->config.bifrost_addr = address;
+            my->config.bifrost_account = account;
+         } else {
+            my->config.bifrost_addr = "127.0.0.1";
+            my->config.bifrost_account = "bob";
          }
 
          my->open_db();

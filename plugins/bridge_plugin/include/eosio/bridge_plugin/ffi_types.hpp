@@ -55,7 +55,9 @@ struct block_id_type_list {
    block_id_type_ffi                *id;
    size_t                           ids_size;
    block_id_type_list() {
-      id = new block_id_type_ffi();
+      id = new block_id_type_ffi[1];
+      auto p = new block_id_type_ffi();
+      id[0] = *p;
       ids_size = 0;
    }
    block_id_type_list(std::vector<block_id_type> &ids) {

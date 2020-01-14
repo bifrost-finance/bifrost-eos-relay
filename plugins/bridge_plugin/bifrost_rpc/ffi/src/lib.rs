@@ -16,12 +16,11 @@
 
 use eos_chain::{Action, ActionReceipt, Checksum256, IncrementalMerkle, SignedBlockHeader};
 use log::info;
-use keyring::AccountKeyring;
-use primitives::crypto::Pair;
 use rpc_client::{
     Api,
     compose_call, compose_extrinsic,
     extrinsic::xt_primitives::UncheckedExtrinsicV4,
+    keyring::AccountKeyring,
 };
 use std::{
     convert::TryInto,
