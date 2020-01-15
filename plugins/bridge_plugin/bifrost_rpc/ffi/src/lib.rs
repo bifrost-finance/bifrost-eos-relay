@@ -40,7 +40,7 @@ pub extern "C" fn change_schedule(
     imcre_merkle:    *const IncrementalMerkleFFI,
     blocks_ffi:      *const SignedBlockHeaderFFI,
     blocks_ffi_size: size_t,
-    ids_list:        *const Checksum256ListFFI,
+    ids_list:        *const Checksum256FFI,
     ids_list_size:   size_t
 ) -> *const RpcResponse {
     // check pointers null or not
@@ -132,10 +132,10 @@ pub extern "C" fn prove_action(
     act_ffi:             *const ActionFFI,
     imcre_merkle:        *const IncrementalMerkleFFI,
     act_receipt:         *const ActionReceiptFFI,
-    action_merkle_paths: *const Checksum256ListFFI,
+    action_merkle_paths: *const Checksum256FFI,
     blocks_ffi:          *const SignedBlockHeaderFFI,
     blocks_ffi_size:     size_t,
-    ids_list:            *const Checksum256ListFFI,
+    ids_list:            *const Checksum256FFI,
     ids_list_size:       size_t
 ) -> *const RpcResponse {
     match (
@@ -193,21 +193,19 @@ pub extern "C" fn prove_action(
             if r.is_err() {
                 return generate_raw_result(false, r.unwrap_err().description());
             }
-            dbg!(&r.as_ref().unwrap().to_string());
-            block_headers.push(r.unwrap())
+            block_headers.push(r.unwrap());
         }
         block_headers
     };
 
-    let ids: Vec<Checksum256> = Vec::with_capacity(10);
-    let mut ids_lists: Vec<Vec<Checksum256>>= vec![ids; 15];
+    let mut ids_lists: Vec<Vec<Checksum256>>= Vec::with_capacity(15);
     let ids_list_ffi = unsafe { slice::from_raw_parts(ids_list, ids_list_size) };
     for ids in ids_list_ffi.iter() {
         let r: Result<Vec<Checksum256>, _> = ids.clone().try_into();
         if r.is_err() {
             return generate_raw_result(false, r.unwrap_err().description());
         }
-        ids_lists.push(r.unwrap())
+        ids_lists.push(r.unwrap());
     }
 
     let url = {

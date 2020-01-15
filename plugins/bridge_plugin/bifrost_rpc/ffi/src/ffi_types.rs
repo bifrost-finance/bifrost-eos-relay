@@ -100,47 +100,20 @@ impl TryInto<Action> for ActionFFI {
 #[derive(Clone, Debug)]
 #[repr(C)]
 pub struct Checksum256FFI {
-    pub data: *const c_char,
-    pub data_size: usize, // basically, it should be 32
-}
-
-impl TryInto<Checksum256> for Checksum256FFI {
-    type Error = Error;
-    fn try_into(self) -> Result<Checksum256, Self::Error> {
-        if self.data.is_null() {
-            Err(Error::NullPtr)
-        } else {
-            let data: [u8; 32] = {
-                let slice = unsafe { slice::from_raw_parts(self.data, self.data_size) };
-                unsafe { mem::transmute_copy(&slice[0]) }
-            };
-
-            Ok(Checksum256::from(data))
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-#[repr(C)]
-pub struct Checksum256ListFFI {
-    pub ids: *const Checksum256FFI,
+    pub id: *const Checksum256,
     pub ids_size: usize,
 }
 
-impl TryInto<Vec<Checksum256>> for Checksum256ListFFI {
+impl TryInto<Vec<Checksum256>> for Checksum256FFI {
     type Error = Error;
     fn try_into(self) -> Result<Vec<Checksum256>, Self::Error> {
-        if self.ids.is_null() {
+//        if self.id.is_null() {
+        if false {
             Err(Error::NullPtr)
         } else {
-            let ids_slice = unsafe { slice::from_raw_parts(self.ids, self.ids_size) };
-            let mut id_list: Vec<Checksum256> = Vec::with_capacity(self.ids_size);
-            for id in ids_slice.iter() {
-                let i = id.clone().try_into()?;
-                id_list.push(i);
-            }
+            let ids = unsafe { slice::from_raw_parts(self.id, self.ids_size).to_vec() };
 
-            Ok(id_list)
+            Ok(ids)
         }
     }
 }
@@ -199,10 +172,7 @@ pub struct IncrementalMerkleFFI {
 impl TryInto<IncrementalMerkle> for IncrementalMerkleFFI {
     type Error = Error;
     fn try_into(self) -> Result<IncrementalMerkle, Self::Error> {
-        dbg!(self._active_nodes);
         if self._active_nodes.is_null() {
-//        if false {
-            dbg!("IncrementalMerkleFFI is null");
             Err(Error::NullPtr)
         } else {
             let _active_nodes = unsafe {

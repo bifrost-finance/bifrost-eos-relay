@@ -118,8 +118,11 @@ namespace eosio {
 
       std::vector<std::vector<block_id_type>>   block_id_lists; // can reserve a buffer to store id
       block_id_lists.reserve(15);
-      block_id_lists.push_back(std::vector<block_id_type>());
-      block_id_lists.push_back(std::vector<block_id_type>());
+
+      auto reserved = std::vector<block_id_type>();
+      reserved.reserve(10);
+      block_id_lists.push_back(reserved);
+      block_id_lists.push_back(reserved);
       for (auto bls: ti->bs) {
          if (bls.block_num <= ti->block_num) continue;
          if (bls.block_num - block_headers.back().block_num() == 12) {
@@ -203,16 +206,15 @@ namespace eosio {
                blocks_ffi[i] = *p;
             }
 
-            auto merkle_ptr = incremental_merkle_ffi(blockroot_merkle);
+            auto merkle_ptr = convert_ffi(blockroot_merkle);
 
-            // ids list pointers
             block_id_type_list *ids_list = new block_id_type_list[block_id_lists.size()];
             for (size_t i = 0; i < block_id_lists.size(); ++i) {
                if (block_id_lists[i].empty()) {
                   ids_list[i] = block_id_type_list();
                   continue;
                }
-               ids_list[i] = block_id_type_list(block_id_lists[i]);
+               ids_list[i] = convert_ffi(block_id_lists[i]);
             }
 
             rpc_result *result = change_schedule(
@@ -248,8 +250,6 @@ namespace eosio {
    void bridge_plugin_impl::prove_action_timer_tick() {
       prove_action_timer->expires_from_now(prove_action_timeout);
       prove_action_timer->async_wait([&](boost::system::error_code ec) {
-         auto ti = prove_action_index.get<by_status>().lower_bound( 1 );
-         auto ti_end = prove_action_index.get<by_status>().upper_bound( 2 );
          for (auto ti = prove_action_index.begin(); ti != prove_action_index.end(); ++ti) {
             ilog("headers length: ${header_len}", ("header_len", ti->bs.size()));
             if (ti->status != 1) continue;
@@ -269,18 +269,19 @@ namespace eosio {
 
             auto act_ffi = action_ffi(ti->act);
 
-            auto merkle_ptr = incremental_merkle_ffi(blockroot_merkle);
+            auto merkle_ptr = convert_ffi(blockroot_merkle);
 
             std::vector<block_id_type> paths = ti->act_receipt_merkle_paths;
-            auto merkle_paths = block_id_type_list(paths);
+            auto merkle_paths = convert_ffi(paths);
 
-             // ids list pointers
             block_id_type_list *ids_list = new block_id_type_list[block_id_lists.size()];
             for (size_t i = 0; i < block_id_lists.size(); ++i) {
-               block_id_type_list *p = new block_id_type_list(block_id_lists[i]);
-               ids_list[i] = *p;
+               if (block_id_lists[i].empty()) {
+                  ids_list[i] = block_id_type_list();
+                  continue;
+               }
+               ids_list[i] = convert_ffi(block_id_lists[i]);
             }
-            ilog("all ids list: ${list}", ("list", block_id_lists));
 
             rpc_result *result = prove_action(
                config.bifrost_addr.data(),
@@ -386,14 +387,15 @@ namespace eosio {
          auto act = action_traces[i].act;
          auto receiver = action_traces[i].receiver;
          if (act.account == name("eosio.token") && act.name == name("transfer") && receiver == name("eosio.token")) {
-            action_transfer der_at;
-            fc::raw::unpack<action_transfer>(act.data, der_at);
-            ilog("money from: ${from}", ("from", der_at.from));
-            ilog("money to: ${to}", ("to", der_at.to));
-            ilog("action traces from: ${to}", ("to", action_traces));
+            action_transfer der_act;
+            fc::raw::unpack<action_transfer>(act.data, der_act);
+            ilog("money from: ${from}", ("from", der_act.from));
+            ilog("money to: ${to}", ("to", der_act.to));
+            ilog("action_transfer: ${to}", ("to", der_act));
+            ilog("action traces from: ${to}", ("to", action_traces[i]));
 
             if (!action_traces[i].receipt) return;
-            if (der_at.from == name(contract) || der_at.to == name(contract)) index = action_traces[i].action_ordinal;
+            if (der_act.from == name(contract) || der_act.to == name(contract)) index = action_traces[i].action_ordinal;
          }
       }
 
@@ -407,11 +409,13 @@ namespace eosio {
       auto trace = action_traces[index];
 
       auto receipt_dig = receipt->digest();
+      int j = -1;
       for (size_t i = 0; i < act_receipts_digs.size(); ++i) {
-         if (act_receipts_digs[i] == receipt_dig) index = i;
+         if (act_receipts_digs[i] == receipt_dig) j = i;
       }
 
-      auto action_merkle_paths = get_proof(index, act_receipts_digs);
+      if (j < 0) return;
+      auto action_merkle_paths = get_proof(j, act_receipts_digs);
 
       auto bt = bridge_prove_action {
         action_traces[index].block_num,

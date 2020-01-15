@@ -33,60 +33,40 @@ struct action_ffi {
 
 };
 
-struct block_id_type_ffi {
-   char                             *data;
-   size_t                           data_size;
-   block_id_type_ffi() {
-      data = new char[1];
-      data_size = 0;
-   }
-   block_id_type_ffi(const block_id_type &block_id) {
-      std::string id_str = (std::string)block_id;
-      data_size = id_str.size();
-      data = new char[data_size + 1];
-      strcpy(data, id_str.c_str());
-   }
-   ~block_id_type_ffi() {
-      if (data) delete []data;
+struct block_id_type_list {
+   const block_id_type        *id;
+   size_t                     ids_size;
+   block_id_type_list() {
+      id = nullptr;
+      ids_size = 0;
    }
 };
 
-struct block_id_type_list {
-   block_id_type_ffi                *id;
-   size_t                           ids_size;
-   block_id_type_list() {
-      id = new block_id_type_ffi[1];
-      auto p = new block_id_type_ffi();
-      id[0] = *p;
-      ids_size = 0;
+block_id_type_list convert_ffi(const std::vector<block_id_type> &ids) {
+   if (ids.empty()) {
+      return block_id_type_list();
    }
-   block_id_type_list(std::vector<block_id_type> &ids) {
-      ids_size = ids.size();
-      if (ids.empty()) {
-         id = new block_id_type_ffi();;
-      } else {
-         id = new block_id_type_ffi[ids_size];
-         for (size_t i = 0; i < ids.size(); ++i) {
-            auto p = new block_id_type_ffi(ids[i]);
-            id[i] = *p;
-         }
-      }
-   }
-   ~block_id_type_list() {
-      if (id) delete []id;
-   }
-};
+   block_id_type_list ids_ffi;
+   ids_ffi.id = ids.data();
+   ids_ffi.ids_size = ids.size();
+
+   return ids_ffi;
+}
 
 struct incremental_merkle_ffi {
    uint64_t                         _node_count;
    const block_id_type              *_active_nodes;
    size_t                           _active_nodes_size;
-   incremental_merkle_ffi(const incremental_merkle &im) {
-      _node_count = im._node_count;
-      _active_nodes = im._active_nodes.data();
-      _active_nodes_size = im._active_nodes.size();
-   }
 };
+
+incremental_merkle_ffi convert_ffi(const incremental_merkle &im) {
+   incremental_merkle_ffi im_ffi;
+   im_ffi._node_count = im._node_count;
+   im_ffi._active_nodes = im._active_nodes.data();
+   im_ffi._active_nodes_size = im._active_nodes.size();
+
+   return im_ffi;
+}
 
 struct action_receipt_ffi {
    account_name                    receiver;
