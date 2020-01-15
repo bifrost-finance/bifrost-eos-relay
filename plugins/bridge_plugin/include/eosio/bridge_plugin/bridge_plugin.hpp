@@ -24,12 +24,12 @@ private:
    std::unique_ptr<class bridge_plugin_impl> my;
 };
 
-   enum Status {
-      FailureOnVerification,
-      SuccessOnVerification,
-      UnderVerification,
-      AwaitVerification,
-   };
+enum Status {
+   FailureOnVerification,
+   SuccessOnVerification,
+   UnderVerification,
+   AwaitVerification,
+};
 
 struct bridge_blocks {
    block_id_type                             id;
