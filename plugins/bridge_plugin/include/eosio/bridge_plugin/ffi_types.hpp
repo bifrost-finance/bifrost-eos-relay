@@ -43,9 +43,6 @@ struct block_id_type_list {
 };
 
 block_id_type_list convert_ffi(const std::vector<block_id_type> &ids) {
-   if (ids.empty()) {
-      return block_id_type_list();
-   }
    block_id_type_list ids_ffi;
    ids_ffi.id = ids.data();
    ids_ffi.ids_size = ids.size();

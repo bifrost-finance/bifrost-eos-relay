@@ -46,9 +46,10 @@ struct bridge_change_schedule {
 struct bridge_prove_action {
    uint32_t                                 block_num = 0; // the block has transfer action
    action                                   act;
-   action_receipt                           act_receipt;
+   action_receipt                           receipt;
+   std::vector<action_receipt>              act_receipts;
+   block_id_type                            act_receipt_digest;
    incremental_merkle                       imcre_merkle;
-   std::vector<block_id_type>               act_receipt_merkle_paths;
    std::vector<block_state>                 bs;
    uint8_t                                  status = 0;
 };
@@ -65,4 +66,4 @@ struct action_transfer {
 FC_REFLECT( eosio::bridge_blocks, (id)(bls) )
 FC_REFLECT( eosio::action_transfer, (from)(to)(quantity)(memo) )
 FC_REFLECT( eosio::bridge_change_schedule, (block_num)(bs)(status) )
-FC_REFLECT( eosio::bridge_prove_action, (block_num)(act)(act_receipt)(act_receipt_merkle_paths)(bs)(status) )
+FC_REFLECT( eosio::bridge_prove_action, (block_num)(act)(receipt)(act_receipts)(act_receipt_digest)(imcre_merkle)(bs)(status) )

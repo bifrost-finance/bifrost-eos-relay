@@ -65,7 +65,7 @@ pub extern "C" fn change_schedule(
         let imcre_merkle = unsafe { ptr::read(imcre_merkle) };
         let r: Result<IncrementalMerkle, _> = imcre_merkle.try_into();
         if r.is_err() {
-            return generate_raw_result(false, r.unwrap_err().description());
+            return generate_raw_result(false, r.unwrap_err().to_string());
         }
         r.unwrap()
     };
@@ -77,9 +77,9 @@ pub extern "C" fn change_schedule(
             let ffi = unsafe { ptr::read(block) };
             let r: Result<SignedBlockHeader, Error> = ffi.try_into();
             if r.is_err() {
-                return generate_raw_result(false, r.unwrap_err().description());
+                return generate_raw_result(false, r.unwrap_err().to_string());
             }
-            block_headers.push(r.unwrap())
+            block_headers.push(r.unwrap());
         }
         block_headers
     };
@@ -90,9 +90,9 @@ pub extern "C" fn change_schedule(
     for ids in ids_list_ffi.iter() {
         let r: Result<Vec<Checksum256>, _> = ids.clone().try_into();
         if r.is_err() {
-            return generate_raw_result(false, r.unwrap_err().description());
+            return generate_raw_result(false, r.unwrap_err().to_string());
         }
-        ids_lists.push(r.unwrap())
+        ids_lists.push(r.unwrap());
     }
 
     let proposal = compose_call!(
@@ -152,7 +152,7 @@ pub extern "C" fn prove_action(
         let ffi = unsafe { ptr::read(act_ffi) };
         let r: Result<Action, _> = ffi.try_into();
         if r.is_err() {
-            return generate_raw_result(false, r.unwrap_err().description());
+            return generate_raw_result(false, r.unwrap_err().to_string());
         }
         r.unwrap()
     };
@@ -161,7 +161,7 @@ pub extern "C" fn prove_action(
         let imcre_merkle = unsafe { ptr::read(imcre_merkle) };
         let r: Result<IncrementalMerkle, _> = imcre_merkle.try_into();
         if r.is_err() {
-            return generate_raw_result(false, r.unwrap_err().description());
+            return generate_raw_result(false, r.unwrap_err().to_string());
         }
         r.unwrap()
     };
@@ -170,7 +170,7 @@ pub extern "C" fn prove_action(
         let act_ffi = unsafe { ptr::read(act_receipt) };
         let r: Result<ActionReceipt, _> = act_ffi.try_into();
         if r.is_err() {
-            return generate_raw_result(false, r.unwrap_err().description());
+            return generate_raw_result(false, r.unwrap_err().to_string());
         }
         r.unwrap()
     };
@@ -179,7 +179,7 @@ pub extern "C" fn prove_action(
         let paths = unsafe { ptr::read(action_merkle_paths) };
         let r: Result<Vec<Checksum256>, _> = paths.try_into();
         if r.is_err() {
-            return generate_raw_result(false, r.unwrap_err().description());
+            return generate_raw_result(false, r.unwrap_err().to_string());
         }
         r.unwrap()
     };
@@ -191,7 +191,7 @@ pub extern "C" fn prove_action(
             let ffi = unsafe { ptr::read(block) };
             let r: Result<SignedBlockHeader, Error> = ffi.try_into();
             if r.is_err() {
-                return generate_raw_result(false, r.unwrap_err().description());
+                return generate_raw_result(false, r.unwrap_err().to_string());
             }
             block_headers.push(r.unwrap());
         }
@@ -199,11 +199,12 @@ pub extern "C" fn prove_action(
     };
 
     let mut ids_lists: Vec<Vec<Checksum256>>= Vec::with_capacity(15);
+    ids_lists.push(Vec::new());
     let ids_list_ffi = unsafe { slice::from_raw_parts(ids_list, ids_list_size) };
-    for ids in ids_list_ffi.iter() {
+    for ids in ids_list_ffi.iter().skip(1) { // skip first ids due to it's am empty list(null pointer)
         let r: Result<Vec<Checksum256>, _> = ids.clone().try_into();
         if r.is_err() {
-            return generate_raw_result(false, r.unwrap_err().description());
+            return generate_raw_result(false, r.unwrap_err().to_string());
         }
         ids_lists.push(r.unwrap());
     }

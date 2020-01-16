@@ -36,9 +36,9 @@ use std::{
 pub(crate) type size_t = usize;
 pub(crate) type FFIResult<T> = std::result::Result<T, Error>;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub enum Error {
-    NullPtr,
+    NullPtr(String),
     CStrConvertError,
     PublicKeyError,
     SignatureError,
@@ -47,7 +47,7 @@ pub enum Error {
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
-            Self::NullPtr => write!(f, "Null pointer."),
+            Self::NullPtr(ref who_is_null) => write!(f, "{} is null pointer.", who_is_null),
             Self::CStrConvertError => write!(f, "Failed to convert c string to rust string."),
             Self::PublicKeyError => write!(f, "Failed to convert string to PublicKey."),
             Self::SignatureError => write!(f, "Failed to convert string to Signature."),
@@ -58,7 +58,7 @@ impl Display for Error {
 impl std::error::Error for Error {
     fn description(&self) -> &str {
         match *self {
-            Self::NullPtr => "Null pointer.",
+            Self::NullPtr(_) => "Null pointer.",
             Self::CStrConvertError => "Failed to convert c string to rust string",
             Self::PublicKeyError => "Failed to convert string to PublicKeyError.",
             Self::SignatureError => "Failed to convert string to Signature.",
@@ -81,7 +81,7 @@ impl TryInto<Action> for ActionFFI {
     type Error = Error;
     fn try_into(self) -> Result<Action, Self::Error> {
         if self.authorization.is_null() || self.data.is_null() {
-            Err(Error::NullPtr)
+            Err(Error::NullPtr("ActionFFI".to_owned()))
         } else {
             let account = self.account;
             let name = self.name;
@@ -107,9 +107,8 @@ pub struct Checksum256FFI {
 impl TryInto<Vec<Checksum256>> for Checksum256FFI {
     type Error = Error;
     fn try_into(self) -> Result<Vec<Checksum256>, Self::Error> {
-//        if self.id.is_null() {
-        if false {
-            Err(Error::NullPtr)
+        if self.id.is_null() {
+            Err(Error::NullPtr("Checksum256FFI".to_owned()))
         } else {
             let ids = unsafe { slice::from_raw_parts(self.id, self.ids_size).to_vec() };
 
@@ -135,7 +134,7 @@ impl TryInto<ActionReceipt> for ActionReceiptFFI {
     type Error = Error;
     fn try_into(self) -> Result<ActionReceipt, Self::Error> {
         if self.auth_sequence.is_null() {
-            Err(Error::NullPtr)
+            Err(Error::NullPtr("ActionReceiptFFI".to_owned()))
         } else {
             let receiver = self.receiver;
             let act_digest = self.act_digest;
@@ -173,7 +172,7 @@ impl TryInto<IncrementalMerkle> for IncrementalMerkleFFI {
     type Error = Error;
     fn try_into(self) -> Result<IncrementalMerkle, Self::Error> {
         if self._active_nodes.is_null() {
-            Err(Error::NullPtr)
+            Err(Error::NullPtr("IncrementalMerkle".to_owned()))
         } else {
             let _active_nodes = unsafe {
                 slice::from_raw_parts(self._active_nodes, self._active_nodes_size).to_vec()
@@ -196,7 +195,7 @@ impl TryInto<Extension> for ExtensionFFI {
     type Error = Error;
     fn try_into(self) -> Result<Extension, Self::Error> {
         if self.data.is_null() {
-            Err(Error::NullPtr)
+            Err(Error::NullPtr("ExtensionFFI".to_owned()))
         } else {
             let ext = unsafe { slice::from_raw_parts(self.data, self.data_size).iter().map(|c| *c as u8 ).collect::<Vec<u8>>() };
 
@@ -217,7 +216,7 @@ impl TryInto<Vec<Extension>> for ExtensionsFFI {
     type Error = Error;
     fn try_into(self) -> Result<Vec<Extension>, Self::Error> {
         if self.extensions.is_null() {
-            Err(Error::NullPtr)
+            Err(Error::NullPtr("ExtensionsFFI".to_owned()))
         } else {
             let exts = unsafe { slice::from_raw_parts(self.extensions, self.extensions_size) };
             let mut extensions: Vec<_> = Vec::with_capacity(exts.len());
@@ -269,7 +268,7 @@ impl TryInto<ProducerSchedule> for ProducerScheduleFFI {
     type Error = Error;
     fn try_into(self) -> Result<ProducerSchedule, Self::Error>  {
         if self.producers.is_null() {
-            return Err(Error::NullPtr);
+            return Err(Error::NullPtr("ProducerScheduleFFI".to_owned()));
         } else {
             let producers_ffi = unsafe { slice::from_raw_parts(self.producers, self.producers_size) };
             let mut producers: Vec<ProducerKey> = Vec::with_capacity(producers_ffi.len());
@@ -303,7 +302,7 @@ impl TryInto<BlockHeader> for BlockHeaderFFI {
     type Error = Error;
     fn try_into(self) -> Result<BlockHeader, Self::Error> {
         if self.previous.is_null() || self.transaction_mroot.is_null() || self.action_mroot.is_null() {
-            return Err(Error::NullPtr);
+            return Err(Error::NullPtr("BlockHeaderFFI".to_owned()));
         }
 
         let new_producers: Option<ProducerSchedule> = {
@@ -363,7 +362,7 @@ impl TryInto<SignedBlockHeader> for SignedBlockHeaderFFI {
     type Error = Error;
     fn try_into(self) -> Result<SignedBlockHeader, Self::Error> {
         if self.block_header.is_null() || self.producer_signature.is_null() {
-            return Err(Error::NullPtr);
+            return Err(Error::NullPtr("SignedBlockHeaderFFI".to_owned()));
         }
 
         let chars = Char::new(self.producer_signature);
@@ -384,7 +383,7 @@ impl TryInto<SignedBlockHeader> for SignedBlockHeaderFFI {
 
 pub(crate) fn char_to_string(cstr: *const c_char) -> FFIResult<String> {
     if cstr.is_null() {
-        return Err(Error::NullPtr);
+        return Err(Error::NullPtr("char_to_string function".to_owned()));
     }
     let cstr = unsafe { CStr::from_ptr(cstr) };
     let rust_string = cstr.to_str().map_err(|_| Error::CStrConvertError)?.to_string();
@@ -394,7 +393,7 @@ pub(crate) fn char_to_string(cstr: *const c_char) -> FFIResult<String> {
 
 pub(crate) fn char_to_str<'a>(ch: &'a Char) -> FFIResult<&'a str> {
     if ch.ptr.is_null() {
-        return Err(Error::NullPtr);
+        return Err(Error::NullPtr("char_to_str function".to_owned()));
     }
     let cstr = unsafe { CStr::from_ptr(**ch) };
     let slice = cstr.to_str().map_err(|_| Error::CStrConvertError)?;

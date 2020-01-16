@@ -54,8 +54,8 @@ namespace eosio {
                     ordered_unique<
                             tag<by_id>,
                             member<bridge_prove_action,
-                                    uint32_t,
-                                    &bridge_prove_action::block_num> >,
+                                    block_id_type,
+                                    &bridge_prove_action::act_receipt_digest> >,
                     ordered_non_unique<
                             tag<by_status>,
                             member<bridge_prove_action,
@@ -109,19 +109,19 @@ namespace eosio {
       std::vector<signed_block_header> block_headers; // can reserve a buffer to store id
       block_headers.reserve(15);
       for (auto bls: ti->bs) {
-         if (ti->block_num == bls.block_num) {
+         if (ti->block_num == bls.block_num) { // which block is need to be verified
             block_headers.push_back(bls.header);
             bl_state = bls;
             break;
          }
       }
 
-      std::vector<std::vector<block_id_type>>   block_id_lists; // can reserve a buffer to store id
+      std::vector<std::vector<block_id_type>> block_id_lists; // can reserve a buffer to store id
       block_id_lists.reserve(15);
 
       auto reserved = std::vector<block_id_type>();
       reserved.reserve(10);
-      block_id_lists.push_back(reserved);
+      block_id_lists.push_back(std::vector<block_id_type>());
       block_id_lists.push_back(reserved);
       for (auto bls: ti->bs) {
          if (bls.block_num <= ti->block_num) continue;
@@ -251,7 +251,7 @@ namespace eosio {
       prove_action_timer->expires_from_now(prove_action_timeout);
       prove_action_timer->async_wait([&](boost::system::error_code ec) {
          for (auto ti = prove_action_index.begin(); ti != prove_action_index.end(); ++ti) {
-            ilog("headers length: ${header_len}", ("header_len", ti->bs.size()));
+            ilog("headers length: ${header_len}. status: ${status}", ("header_len", ti->bs.size())("status", ti->status));
             if (ti->status != 1) continue;
 
             auto tuple = collect_incremental_merkle_and_blocks(ti);
@@ -265,21 +265,26 @@ namespace eosio {
                blocks_ffi[i] = *p;
             }
 
-            auto receipts = action_receipt_ffi(ti->act_receipt);
-
+            auto receipts = action_receipt_ffi(ti->receipt);
             auto act_ffi = action_ffi(ti->act);
-
             auto merkle_ptr = convert_ffi(blockroot_merkle);
 
-            std::vector<block_id_type> paths = ti->act_receipt_merkle_paths;
+            std::vector<block_id_type> act_receipts_digs;
+            int j = -1;
+            for (size_t i = 0; i < ti->act_receipts.size(); ++i) {
+               auto dig = ti->act_receipts[i].digest();
+               if (dig == ti->act_receipt_digest) j = i;
+               act_receipts_digs.push_back(dig);
+            }
+            if (j < 0) {
+               ilog("This is an invalid transaction due to wrong action receipt");
+               continue;
+            }
+            auto paths = get_proof(j, act_receipts_digs);
             auto merkle_paths = convert_ffi(paths);
 
             block_id_type_list *ids_list = new block_id_type_list[block_id_lists.size()];
             for (size_t i = 0; i < block_id_lists.size(); ++i) {
-               if (block_id_lists[i].empty()) {
-                  ids_list[i] = block_id_type_list();
-                  continue;
-               }
                ids_list[i] = convert_ffi(block_id_lists[i]);
             }
 
@@ -376,7 +381,6 @@ namespace eosio {
       const std::vector<action_receipt> &receipts
    ) {
       int index = -1;
-      std::vector<block_id_type> act_receipts_digs;
       for (size_t i = 0; i < action_traces.size(); ++i) {
          // in case action traces has errors
          if (action_traces[i].except) {
@@ -395,38 +399,37 @@ namespace eosio {
             ilog("action traces from: ${to}", ("to", action_traces[i]));
 
             if (!action_traces[i].receipt) return;
-            if (der_act.from == name(contract) || der_act.to == name(contract)) index = action_traces[i].action_ordinal;
+            if (der_act.from == name(contract) || der_act.to == name(contract)) {
+               index = action_traces[i].action_ordinal;
+            }
          }
       }
 
       if (index < 0) return;
-      for (size_t i = 0; i < receipts.size(); ++i) {
-         ilog("block num from action trace: ${num}", ("num", action_traces[i].block_num));
-         act_receipts_digs.push_back(receipts[i].digest());
-      }
-      auto act = action_traces[index].act;
+
       auto receipt = action_traces[index].receipt;
-      auto trace = action_traces[index];
-
-      auto receipt_dig = receipt->digest();
-      int j = -1;
-      for (size_t i = 0; i < act_receipts_digs.size(); ++i) {
-         if (act_receipts_digs[i] == receipt_dig) j = i;
-      }
-
-      if (j < 0) return;
-      auto action_merkle_paths = get_proof(j, act_receipts_digs);
+      auto receipt_dig = action_traces[index].receipt->digest(); // this can be unique as index
 
       auto bt = bridge_prove_action {
-        action_traces[index].block_num,
-        act,
-        *receipt,
-        incremental_merkle(),
-        action_merkle_paths,
-        std::vector<block_state>(),
-        0
+         action_traces[index].block_num,
+         action_traces[index].act,
+         *action_traces[index].receipt,
+         receipts,
+         receipt_dig,
+         incremental_merkle(),
+         std::vector<block_state>(),
+         0
       };
       prove_action_index.insert(bt);
+
+      // replace the latest action receipts while more than one action in a single block
+      for (auto ti = prove_action_index.begin(); ti != prove_action_index.end(); ++ti) {
+         if (ti->block_num == bt.block_num) {
+            prove_action_index.modify(ti, [=](auto &entry) {
+               entry.act_receipts = receipts;
+            });
+         }
+      }
    }
 
    void bridge_plugin_impl::apply_action_receipt(std::tuple<const transaction_trace_ptr&, const std::vector<action_receipt>&> t) {
@@ -535,7 +538,7 @@ namespace eosio {
    }
 
    void bridge_plugin::plugin_initialize(const variables_map &options) {
-      ilog("bridge_plugin::plugin_initializ.");
+      ilog("bridge_plugin::plugin_initialize.");
 
       try {
          if (options.count("bifrost-node") && options.count("bifrost-account")) {
