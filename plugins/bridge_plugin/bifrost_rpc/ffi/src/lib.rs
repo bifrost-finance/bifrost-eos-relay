@@ -1,4 +1,4 @@
-// Copyright 2019 Liebi Technologies.
+// Copyright 2019-2020 Liebi Technologies.
 // This file is part of Bifrost.
 
 // Bifrost is free software: you can redistribute it and/or modify
@@ -24,7 +24,6 @@ use rpc_client::{
 };
 use std::{
     convert::TryInto,
-    error::Error as _,
     os::raw::c_char,
     ptr,
     slice,
@@ -217,7 +216,7 @@ pub extern "C" fn prove_action(
         url.unwrap()
     };
     let signer = AccountKeyring::Alice.pair();
-    let api = Api::new(format!("ws://{}:9944", url)).set_signer(signer.clone());
+    let api = Api::new(format!("ws://{}", url)).set_signer(signer.clone());
 
     let proposal = compose_call!(
         api.metadata.clone(),

@@ -24,44 +24,37 @@ namespace eosio {
    typedef multi_index_container<
            bridge_blocks,
            indexed_by<
-                   ordered_unique<
-                           tag<by_id>,
-                           member<bridge_blocks,
-                                  block_id_type,
-                                  &bridge_blocks::id> >
+              ordered_unique<tag<by_id>,
+              member<bridge_blocks, block_id_type, &bridge_blocks::id>>
            >
    > bridge_block_index;
 
    typedef multi_index_container<
            bridge_change_schedule,
            indexed_by<
-                   ordered_unique<
-                           tag<by_id>,
-                           member<bridge_change_schedule,
-                                   uint32_t,
-                                   &bridge_change_schedule::block_num> >,
-                   ordered_non_unique<
-                           tag<by_status>,
-                           member<bridge_change_schedule,
-                                   uint8_t,
-                                   &bridge_change_schedule::status> >
+              ordered_unique<
+                 tag<by_id>,
+                 member<bridge_change_schedule, uint32_t, &bridge_change_schedule::block_num>
+              >,
+              ordered_non_unique<
+                 tag<by_status>,
+                 member<bridge_change_schedule, uint8_t, &bridge_change_schedule::status>
+              >
            >
    > bridge_change_schedule_index;
 
    typedef multi_index_container<
            bridge_prove_action,
-            indexed_by<
-                    ordered_unique<
-                            tag<by_id>,
-                            member<bridge_prove_action,
-                                    block_id_type,
-                                    &bridge_prove_action::act_receipt_digest> >,
-                    ordered_non_unique<
-                            tag<by_status>,
-                            member<bridge_prove_action,
-                                    uint8_t,
-                                    &bridge_prove_action::status> >
-            >
+           indexed_by<
+              ordered_unique<
+                 tag<by_id>,
+                 member<bridge_prove_action, block_id_type, &bridge_prove_action::act_receipt_digest>
+              >,
+              ordered_non_unique<
+                 tag<by_status>,
+                 member<bridge_prove_action, uint8_t, &bridge_prove_action::status>
+              >
+           >
     > bridge_prove_action_index;
 
    struct bifrost_config {
@@ -398,6 +391,9 @@ namespace eosio {
             ilog("action_transfer: ${to}", ("to", der_act));
             ilog("action traces from: ${to}", ("to", action_traces[i]));
 
+            // deposit operation mean asset will be bridged to bifrost, it needs to verify action.
+            // but withdraw operation, do not need to verify action.
+            if (der_act.from == contract) return; // withdraw operation, do not need to verify action
             if (!action_traces[i].receipt) return;
             if (der_act.from == name(contract) || der_act.to == name(contract)) {
                index = action_traces[i].action_ordinal;
@@ -534,6 +530,9 @@ namespace eosio {
       cfg.add_options()
               ("bifrost-account", bpo::value<string>()->default_value("bob"),
                "This is sopposed to be a bifrost account like: alice or bob");
+      cfg.add_options()
+              ("delete-relay-history", bpo::bool_switch()->default_value(false),
+               "This is sopposed to delete all realy data history");
       ilog("bridge_plugin::set_program_options.");
    }
 
@@ -550,8 +549,14 @@ namespace eosio {
             my->config.bifrost_addr = address;
             my->config.bifrost_account = account;
          } else {
-            my->config.bifrost_addr = "127.0.0.1";
+            my->config.bifrost_addr = "127.0.0.1:9944";
             my->config.bifrost_account = "bob";
+         }
+
+         if (options.at("delete-relay-history").as<bool>()) {
+            // Todo, delete relay data
+            ilog("delete relay data history. ${h}", ("h", my->datadir));
+            boost::filesystem::remove_all(my->datadir);
          }
 
          my->open_db();
