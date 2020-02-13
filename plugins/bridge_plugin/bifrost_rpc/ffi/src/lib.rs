@@ -217,11 +217,13 @@ pub extern "C" fn prove_action(
     };
     let signer = AccountKeyring::Alice.pair();
     let api = Api::new(format!("ws://{}", url)).set_signer(signer.clone());
+    let target = AccountKeyring::Alice.public();
 
     let proposal = compose_call!(
         api.metadata.clone(),
         "BridgeEos",
         "prove_action",
+        target,
         action,
         action_receipt,
         action_merkle_paths,

@@ -316,7 +316,7 @@ namespace eosio {
 
    void bridge_plugin_impl::irreversible_block(const chain::block_state_ptr &block) {
       // flush buffer
-      uint64_t block_index_max_size = 1024;
+      uint64_t block_index_max_size = 10240;
       if (prove_action_index.size() >= block_index_max_size && prove_action_index.begin()->status == 2) {
          prove_action_index.erase(prove_action_index.begin());
       }
