@@ -9,7 +9,11 @@ else ()
     set(TARGET_DIR "release")
 endif ()
 
-set(LIB_RPC "${CMAKE_CURRENT_BINARY_DIR}/${TARGET_DIR}/librpc_client.dylib")
+if(LINUX)
+    set(LIB_RPC "${CMAKE_CURRENT_BINARY_DIR}/${TARGET_DIR}/librpc_client.so")
+else()
+    set(LIB_RPC "${CMAKE_CURRENT_BINARY_DIR}/${TARGET_DIR}/librpc_client.dylib")
+endif()
 
 add_custom_target(
     bifrost_rpc ALL
