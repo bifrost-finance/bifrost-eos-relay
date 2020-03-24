@@ -9,6 +9,10 @@ else ()
     set(TARGET_DIR "release")
 endif ()
 
+if(UNIX AND NOT APPLE)
+    set(LINUX TRUE)
+endif()
+
 if(LINUX)
     set(LIB_RPC "${CMAKE_CURRENT_BINARY_DIR}/${TARGET_DIR}/librpc_client.so")
 else()
