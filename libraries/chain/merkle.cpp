@@ -49,4 +49,34 @@ digest_type merkle(vector<digest_type> ids) {
    return ids.front();
 }
 
+vector<digest_type> get_proof(int position, vector<digest_type> ids) {
+   vector<digest_type> paths;
+
+   if (ids.empty())  {
+      return vector<digest_type>();
+   }
+
+   while (ids.size() > 1) {
+      if(ids.size() % 2) {
+         ids.push_back(ids.back());
+      }
+
+      // if right node
+      if (position % 2) {
+         paths.push_back(make_canonical_left(ids[position - 1]));
+      } else {
+         paths.push_back(make_canonical_right(ids[position + 1]));
+      }
+      position /= 2;
+
+      for (size_t i = 0; i < ids.size() / 2; i++) {
+         ids[i] = digest_type::hash(make_canonical_pair(ids[2 * i], ids[(2 * i) + 1]));
+      }
+
+      ids.resize(ids.size() / 2);
+   }
+
+   return paths;
+}
+
 } } // eosio::chain

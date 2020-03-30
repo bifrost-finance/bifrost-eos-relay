@@ -307,6 +307,9 @@ namespace eosio { namespace chain {
          signal<void(std::tuple<const transaction_trace_ptr&, const signed_transaction&>)> applied_transaction;
          signal<void(const int&)>                      bad_alloc;
 
+         // a signal for collecting action receipts
+         signal<void(std::tuple<const transaction_trace_ptr&, const std::vector<action_receipt>&>)>    apply_action_receipt;
+
          /*
          signal<void()>                                  pre_apply_block;
          signal<void()>                                  post_apply_block;
