@@ -33,6 +33,7 @@ mod ffi_types;
 use ffi_types::*;
 
 mod futures;
+use futures::*;
 
 #[no_mangle]
 pub extern "C" fn change_schedule(
@@ -254,3 +255,135 @@ pub extern "C" fn prove_action(
         }
     }
 }
+
+/*
+#[no_mangle]
+pub extern "C" fn async_prove_action(
+    url:                 *const c_char,
+    signer:              *const c_char,
+    act_ffi:             *const ActionFFI,
+    imcre_merkle:        *const IncrementalMerkleFFI,
+    act_receipt:         *const ActionReceiptFFI,
+    action_merkle_paths: *const Checksum256FFI,
+    blocks_ffi:          *const SignedBlockHeaderFFI,
+    blocks_ffi_size:     size_t,
+    ids_list:            *const Checksum256FFI,
+    ids_list_size:       size_t
+) {
+    use tokio::runtime::Runtime;
+    use tokio::sync::mpsc;
+//    match (
+//        url.is_null(), signer.is_null(), act_ffi.is_null(), imcre_merkle.is_null(),
+//        act_receipt.is_null(), action_merkle_paths.is_null(), blocks_ffi.is_null(), ids_list.is_null()
+//    ) {
+//        (false, false, false, false, false, false, false, false) => (),
+//        _ => { // if there's any null pointer, just return
+//            return generate_raw_result(false, "cannot send action to bifrost node to prove it due to there're null points");
+//        }
+//    }
+
+    // create channel
+    let (mut tx, mut rx) = mpsc::channel(6);
+    // create runtime handler
+    let mut runtime = Runtime::new().unwrap();
+
+    runtime.spawn(async move {
+//        let tx = tx.clone();
+        let act = ActionFuture { ffi: act_ffi, finished: false}.await;
+        tx.send(FuturesData::Action(act)).await;
+    });
+
+//    runtime.spawn(async {
+//        let tx = tx.clone();
+//        let imcre_merkle = IncrementalMerkleFuture { ffi: imcre_merkle, finished: false}.await;
+//        tx.send(FuturesData::IncrementalMerkle(imcre_merkle)).await;
+//    });
+
+//    runtime.spawn(async {
+//        let tx = tx.clone();
+//        let act_receipt = ActionReceiptFuture { ffi: act_receipt, finished: false}.await;
+//        tx.send(FuturesData::ActionReceipt(act_receipt)).await;
+//    });
+
+//    runtime.spawn(async {
+//        let tx = tx.clone();
+//        let action_merkle_paths = Checksum256Future { ffi: action_merkle_paths, finished: false}.await;
+//        tx.send(FuturesData::Checksum256(action_merkle_paths)).await;
+//    });
+
+//    runtime.spawn(async {
+//        let tx = tx.clone();
+//        let headers = SignedBlockHeadersFuture {
+//            ffi: blocks_ffi,
+//            blocks_ffi_size,
+//            finished: false
+//        }.await;
+//        tx.send(FuturesData::SignedBlockHeader(headers)).await;
+//    });
+
+//    runtime.spawn(async {
+//        let tx = tx.clone();
+//        let ids_list = IdListFuture { ffi: ids_list, ids_list_size, finished: false}.await;
+//        tx.send(FuturesData::IdList(ids_list)).await;
+//    });
+
+//    let url = {
+//        let url = char_to_string(url);
+//        if url.is_err() {
+//            return generate_raw_result(false, "This is not an valid bifrost node address.");
+//        }
+//        url.unwrap()
+//    };
+//    let signer = AccountKeyring::Alice.pair();
+//    let api = Api::new(format!("ws://{}", url)).set_signer(signer.clone());
+//    let target = AccountKeyring::Alice.public();
+
+    runtime.spawn(async move {
+
+        while let Some(data) = rx.recv().await {
+            match data {
+                FuturesData::Action(act) => (),
+                FuturesData::Checksum256(act) => (),
+                FuturesData::ActionReceipt(act) => (),
+                FuturesData::IncrementalMerkle(act) => (),
+                FuturesData::SignedBlockHeader(act) => (),
+                FuturesData::IdList(act) => (),
+            }
+        }
+
+//        let proposal = compose_call!(
+//            api.metadata.clone(),
+//            "BridgeEos",
+//            "prove_action",
+//            target,
+//            action,
+//            action_receipt,
+//            action_merkle_paths,
+//            merkle,
+//            block_headers,
+//            ids_lists
+//        );
+//
+//        let xt: UncheckedExtrinsicV4<_> = compose_extrinsic!(
+//            api.clone(),
+//            "Sudo",
+//            "sudo",
+//            proposal
+//        );
+//
+//        println!("[+] Composed extrinsic: {:?}\n", xt);
+//        // send and watch extrinsic until finalized
+//        match api.send_extrinsic(xt.hex_encode()) {
+//            Ok(tx_hash) => {
+//                println!("[+] Transaction got finalized. Hash: {:?}\n", tx_hash);
+//                generate_raw_result(true, tx_hash.to_string())
+//            }
+//            Err(e) => {
+//                println!("[+] Transaction got failure due to: {:?}\n", e);
+//                generate_raw_result(true, e.to_string())
+//            }
+//        }
+    });
+
+}
+*/
