@@ -422,15 +422,14 @@ impl Deref for Char<'_> {
     }
 }
 
-pub(crate) fn generate_raw_result(success: bool, msg: impl AsRef<str>) -> *const RpcResponse {
+pub(crate) fn generate_raw_result(success: bool, msg: impl AsRef<str>) -> Box<RpcResponse> {
     let c_str = CString::new(msg.as_ref())
                 .unwrap_or(
                     CString::new("unknow error type.").expect("failed to get raw pointer of error message")
                 );
     let result = RpcResponse { success, msg: c_str.into_raw() };
-    let box_result = Box::new(result);
 
-    Box::into_raw(box_result)
+    Box::new(result)
 }
 
 // this struct will return to c++ caller

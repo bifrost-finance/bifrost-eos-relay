@@ -15,13 +15,6 @@
 // along with Bifrost.  If not, see <http://www.gnu.org/licenses/>.
 
 use eos_chain::{Action, ActionReceipt, Checksum256, IncrementalMerkle, SignedBlockHeader};
-use log::info;
-use rpc_client::{
-    Api,
-    compose_call, compose_extrinsic,
-    extrinsic::xt_primitives::UncheckedExtrinsicV4,
-    keyring::AccountKeyring,
-};
 use std::{
     convert::TryInto,
     os::raw::c_char,
@@ -32,8 +25,10 @@ use std::{
 mod ffi_types;
 use ffi_types::*;
 
-mod futures;
-use futures::*;
+mod ffi_futures;
+use ffi_futures::*;
+
+mod rpc_calls;
 
 #[no_mangle]
 pub extern "C" fn change_schedule(
@@ -44,7 +39,7 @@ pub extern "C" fn change_schedule(
     blocks_ffi_size: size_t,
     ids_list:        *const Checksum256FFI,
     ids_list_size:   size_t
-) -> *const RpcResponse {
+) -> Box<RpcResponse> {
     // check pointers null or not
     match (url.is_null(), signer.is_null(), imcre_merkle.is_null(), blocks_ffi.is_null(), ids_list.is_null()) {
         (false, false, false, false, false) => (),
@@ -58,10 +53,8 @@ pub extern "C" fn change_schedule(
         if url.is_err() {
             return generate_raw_result(false, "This is not an valid bifrost node address.");
         }
-        url.unwrap()
+        format!("ws://{}", url.unwrap())
     };
-    let signer = AccountKeyring::Alice.pair();
-    let api = Api::new(format!("ws://{}", url)).set_signer(signer.clone());
 
     let merkle: IncrementalMerkle = {
         let imcre_merkle = &unsafe { ptr::read(imcre_merkle) };
@@ -97,25 +90,17 @@ pub extern "C" fn change_schedule(
         ids_lists.push(r.unwrap());
     }
 
-    let proposal = compose_call!(
-        api.metadata.clone(),
-        "BridgeEos",
-        "change_schedule",
-        merkle,
-        block_headers,
-        ids_lists
-    );
+    let result = futures::executor::block_on(async move {
+        crate::rpc_calls::change_schedule_call(
+            url,
+            merkle,
+            block_headers,
+            ids_lists,
+        ).await
+    });
 
-    let xt: UncheckedExtrinsicV4<_> = compose_extrinsic!(
-        api.clone(),
-        "Sudo",
-        "sudo",
-        proposal
-    );
-
-    println!("[+] Composed extrinsic: {:?}\n", xt);
     // send and watch extrinsic until finalized
-    match api.send_extrinsic(xt.hex_encode()) {
+    match result {
         Ok(tx_hash) => {
             println!("[+] Transaction got finalized. Hash: {:?}\n", tx_hash);
             generate_raw_result(true, tx_hash.to_string())
@@ -139,7 +124,7 @@ pub extern "C" fn prove_action(
     blocks_ffi_size:     size_t,
     ids_list:            *const Checksum256FFI,
     ids_list_size:       size_t
-) -> *const RpcResponse {
+) -> Box<RpcResponse> {
     match (
         url.is_null(), signer.is_null(), act_ffi.is_null(), imcre_merkle.is_null(),
         act_receipt.is_null(), action_merkle_paths.is_null(), blocks_ffi.is_null(), ids_list.is_null()
@@ -216,35 +201,23 @@ pub extern "C" fn prove_action(
         if url.is_err() {
             return generate_raw_result(false, "This is not an valid bifrost node address.");
         }
-        url.unwrap()
+        format!("ws://{}", url.unwrap())
     };
-    let signer = AccountKeyring::Alice.pair();
-    let api = Api::new(format!("ws://{}", url)).set_signer(signer.clone());
-    let target = AccountKeyring::Alice.public();
 
-    let proposal = compose_call!(
-        api.metadata.clone(),
-        "BridgeEos",
-        "prove_action",
-        target,
-        action,
-        action_receipt,
-        action_merkle_paths,
-        merkle,
-        block_headers,
-        ids_lists
-    );
+    let result = futures::executor::block_on(async move {
+        crate::rpc_calls::prove_action_call(
+            url,
+            action,
+            action_receipt,
+            action_merkle_paths,
+            merkle,
+            block_headers,
+            ids_lists,
+        ).await
+    });
 
-    let xt: UncheckedExtrinsicV4<_> = compose_extrinsic!(
-        api.clone(),
-        "Sudo",
-        "sudo",
-        proposal
-    );
-
-    println!("[+] Composed extrinsic: {:?}\n", xt);
     // send and watch extrinsic until finalized
-    match api.send_extrinsic(xt.hex_encode()) {
+    match result {
         Ok(tx_hash) => {
             println!("[+] Transaction got finalized. Hash: {:?}\n", tx_hash);
             generate_raw_result(true, tx_hash.to_string())

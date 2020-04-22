@@ -357,7 +357,7 @@ namespace eosio {
          }
          if (iter->status == 0 && iter->block_num != 0 && iter->bs.size() >= 12 * 16) {
             prove_action_index.modify(iter, [=](auto &entry) {
-               ilog("collected blocks for prove_action: ${to}", ("to", block->block_num));
+               ilog("collected blocks for proving action: ${to}", ("to", block->block_num));
                entry.status = 1; // full
             });
          }
@@ -383,9 +383,9 @@ namespace eosio {
                }
             });
          }
-         if (iter->status != 2 && iter->block_num != 0 && iter->bs.size() >= 12 * 16) {
+         if (iter->status == 0 && iter->block_num != 0 && iter->bs.size() >= 12 * 16) {
             change_schedule_index.modify(iter, [=](auto &entry) {
-               ilog("collected blocks for change schedule: ${to}", ("to", block->block_num));
+               ilog("collected blocks for changing schedule: ${to}", ("to", block->block_num));
                entry.status = 1; // full
             });
          }
@@ -417,7 +417,7 @@ namespace eosio {
 
             // deposit operation mean asset will be bridged to bifrost, it needs to verify action.
             // but withdraw operation, do not need to verify action.
-//            if (der_act.from == name(contract)) return; // withdraw operation, do not need to verify action
+            // if (der_act.from == name(contract)) return; // withdraw operation, do not need to verify action
             if (!action_traces[i].receipt) return;
             if (der_act.from == name(contract) || der_act.to == name(contract)) {
                index = action_traces[i].action_ordinal;
