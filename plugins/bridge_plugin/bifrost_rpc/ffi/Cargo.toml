@@ -14,7 +14,7 @@ eos-chain = { git = "https://github.com/bifrost-codes/rust-eos", branch = "maste
 futures = { version = "0.3.4" }
 #tokio = { version = "0.2.18", features = ["sync", "rt-core"] }
 subxt = { version = "0.6", package = "substrate-subxt" }
-sp-keyring = { version = "2.0.0-alpha.6", package = "sp-keyring" }
+sp-core = { version = "2.0.0-alpha.6", package = "sp-core" }
 serde_json = "1.0"
 
 [profile.release]

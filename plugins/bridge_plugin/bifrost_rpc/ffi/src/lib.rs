@@ -17,6 +17,7 @@
 use eos_chain::{Action, ActionReceipt, Checksum256, IncrementalMerkle, SignedBlockHeader};
 use std::{
     convert::TryInto,
+    fmt::{self, Display},
     os::raw::c_char,
     ptr,
     slice,
@@ -29,6 +30,42 @@ mod ffi_futures;
 use ffi_futures::*;
 
 mod rpc_calls;
+
+#[derive(Clone, Debug)]
+pub enum Error {
+    NullPtr(String),
+    CStrConvertError,
+    PublicKeyError,
+    SignatureError,
+    WrongSudoSeed,
+    SubxtError,
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Self::NullPtr(ref who_is_null) => write!(f, "{} is null pointer.", who_is_null),
+            Self::CStrConvertError => write!(f, "Failed to convert c string to rust string."),
+            Self::PublicKeyError => write!(f, "Failed to convert string to PublicKey."),
+            Self::SignatureError => write!(f, "Failed to convert string to Signature."),
+            Self::WrongSudoSeed => write!(f, "Wrong sudo seed, failed to sign transaction."),
+            Self::SubxtError => write!(f, "Error from subxt crate."),
+        }
+    }
+}
+
+impl std::error::Error for Error {
+    fn description(&self) -> &str {
+        match *self {
+            Self::NullPtr(_) => "Null pointer.",
+            Self::CStrConvertError => "Failed to convert c string to rust string.",
+            Self::PublicKeyError => "Failed to convert string to PublicKeyError.",
+            Self::SignatureError => "Failed to convert string to Signature.",
+            Self::WrongSudoSeed => "Wrong sudo seed, failed to sign transaction.",
+            Self::SubxtError => "Error from subxt crate.",
+        }
+    }
+}
 
 #[no_mangle]
 pub extern "C" fn change_schedule(
@@ -56,6 +93,14 @@ pub extern "C" fn change_schedule(
         format!("ws://{}", url.unwrap())
     };
 
+    let signer = {
+        let signer = char_to_string(signer);
+        if signer.is_err() {
+            return generate_raw_result(false, "This is not an valid bifrost node address.");
+        }
+        signer.unwrap()
+    };
+
     let merkle: IncrementalMerkle = {
         let imcre_merkle = &unsafe { ptr::read(imcre_merkle) };
         let r: Result<IncrementalMerkle, _> = imcre_merkle.try_into();
@@ -79,10 +124,10 @@ pub extern "C" fn change_schedule(
         block_headers
     };
 
-    let ids: Vec<Checksum256> = Vec::with_capacity(10);
-    let mut ids_lists: Vec<Vec<Checksum256>>= vec![ids; 15];
+    let mut ids_lists: Vec<Vec<Checksum256>>= Vec::with_capacity(15);
+    ids_lists.push(Vec::new());
     let ids_list_ffi = &unsafe { slice::from_raw_parts(ids_list, ids_list_size) };
-    for ids in ids_list_ffi.iter() {
+    for ids in ids_list_ffi.iter().skip(1) { // skip first ids due to it's am empty list(null pointer)
         let r: Result<Vec<Checksum256>, _> = ids.try_into();
         if r.is_err() {
             return generate_raw_result(false, r.unwrap_err().to_string());
@@ -93,6 +138,7 @@ pub extern "C" fn change_schedule(
     let result = futures::executor::block_on(async move {
         crate::rpc_calls::change_schedule_call(
             url,
+            signer,
             merkle,
             block_headers,
             ids_lists,
@@ -107,7 +153,7 @@ pub extern "C" fn change_schedule(
         }
         Err(e) => {
             println!("[+] Transaction got failure due to: {:?}\n", e);
-            generate_raw_result(true, e.to_string())
+            generate_raw_result(false, e.to_string())
         }
     }
 }
@@ -204,9 +250,18 @@ pub extern "C" fn prove_action(
         format!("ws://{}", url.unwrap())
     };
 
+    let signer = {
+        let signer = char_to_string(signer);
+        if signer.is_err() {
+            return generate_raw_result(false, "This is not an valid bifrost node address.");
+        }
+        signer.unwrap()
+    };
+
     let result = futures::executor::block_on(async move {
         crate::rpc_calls::prove_action_call(
             url,
+            signer,
             action,
             action_receipt,
             action_merkle_paths,
@@ -224,7 +279,7 @@ pub extern "C" fn prove_action(
         }
         Err(e) => {
             println!("[+] Transaction got failure due to: {:?}\n", e);
-            generate_raw_result(true, e.to_string())
+            generate_raw_result(false, e.to_string())
         }
     }
 }

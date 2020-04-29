@@ -60,7 +60,8 @@ namespace eosio {
 
    struct bifrost_config {
       std::string bifrost_addr;
-      std::string bifrost_account;
+      std::string bifrost_crossaccount;
+      std::string bifrost_signer;
    };
 
    class bridge_plugin_impl {
@@ -152,16 +153,30 @@ namespace eosio {
          if (ti->block_num == bls.block_num) {
             block_headers.push_back(bls.header);
             bl_state = bls;
+            block_found = true;
             break;
          }
+      }
+
+      // get incremental_merkle
+      auto pre_block_state = block_index.find(bl_state.header.previous);
+      auto blockroot_merkle = pre_block_state->bls.blockroot_merkle;
+      if (blockroot_merkle._node_count != 0)  {
+         change_schedule_index.modify(ti, [&](auto &entry) {
+            entry.imcre_merkle = blockroot_merkle;
+            block_found = true;
+            ilog("bl_state blockroot_merkle ${times}.", ("times", blockroot_merkle));
+         });
       }
 
       if (!block_found) {
          return std::make_tuple(block_headers, block_id_lists, false);
       }
 
+      auto reserved = std::vector<block_id_type>();
+      reserved.reserve(10);
       block_id_lists.push_back(std::vector<block_id_type>());
-      block_id_lists.push_back(std::vector<block_id_type>());
+      block_id_lists.push_back(reserved);
       for (auto bls: ti->bs) {
          if (bls.block_num <= ti->block_num) continue;
          if (bls.block_num - block_headers.back().block_num() == 12) {
@@ -182,6 +197,7 @@ namespace eosio {
       change_schedule_timer->expires_from_now(change_schedule_timeout);
       change_schedule_timer->async_wait([&](boost::system::error_code ec) {
          for (auto ti = change_schedule_index.begin(); ti != change_schedule_index.end(); ++ti) {
+            ilog("Changed schedule ${times} size. Changed status: ${status}", ("times", ti->bs.size())("status", ti->status));
             if (ti->status != 1) continue;
 
             auto tuple = collect_incremental_merkle_and_blocks(ti);
@@ -207,16 +223,12 @@ namespace eosio {
 
             block_id_type_list *ids_list = new block_id_type_list[block_id_lists.size()];
             for (size_t i = 0; i < block_id_lists.size(); ++i) {
-               if (block_id_lists[i].empty()) {
-                  ids_list[i] = block_id_type_list();
-                  continue;
-               }
                ids_list[i] = convert_ffi(block_id_lists[i]);
             }
 
             rpc_result *result = change_schedule(
                config.bifrost_addr.data(),
-               config.bifrost_account.data(),
+               config.bifrost_signer.data(),
                &merkle_ptr,
                blocks_ffi,
                block_headers.size(),
@@ -294,7 +306,7 @@ namespace eosio {
 
             rpc_result *result = prove_action(
                config.bifrost_addr.data(),
-               config.bifrost_account.data(),
+               config.bifrost_signer.data(),
                &act_ffi,
                &merkle_ptr,
                &receipts,
@@ -457,7 +469,7 @@ namespace eosio {
       auto acts = std::get<1>(t);
 
       auto action_traces = tt->action_traces;
-      filter_action(config.bifrost_account, action_traces, acts);
+      filter_action(config.bifrost_crossaccount, action_traces, acts);
    }
 
    void bridge_plugin_impl::open_db() {
@@ -549,11 +561,14 @@ namespace eosio {
 
    void bridge_plugin::set_program_options(options_description &, options_description &cfg) {
       cfg.add_options()
-              ("bifrost-node", bpo::value<string>()->default_value("127.0.0.1"),
+              ("bifrost-node", bpo::value<string>()->default_value("127.0.0.1:9944"),
                "This is sopposed to be a bifrost node address like: 127.0.0.1");
       cfg.add_options()
-              ("bifrost-account", bpo::value<string>()->default_value("bob"),
-               "This is sopposed to be a bifrost account like: alice or bob");
+              ("bifrost-crossaccount", bpo::value<string>()->default_value("bifrostcross"),
+               "This is sopposed to be a bifrost crossaccount like: bifrostcross");
+      cfg.add_options()
+              ("bifrost-signer", bpo::value<string>()->default_value("//Alice"),
+               "This is sopposed to be a bifrost crossaccount like: alice or bob");
       cfg.add_options()
               ("delete-relay-history", bpo::bool_switch()->default_value(false),
                "This is sopposed to delete all realy data history");
@@ -564,17 +579,21 @@ namespace eosio {
       ilog("bridge_plugin::plugin_initialize.");
 
       try {
-         if (options.count("bifrost-node") && options.count("bifrost-account")) {
+         if (options.count("bifrost-node") && options.count("bifrost-crossaccount") && options.count("bifrost-signer")) {
             // Handle the option
             auto address = options.at("bifrost-node").as<std::string>();
-            auto account = options.at("bifrost-account").as<std::string>();
-            ilog("address: ${addr}.", ("addr", address));
-            ilog("account: ${addr}.", ("addr", account));
+            auto crossaccount = options.at("bifrost-crossaccount").as<std::string>();
+            auto signer = options.at("bifrost-signer").as<std::string>();
+            ilog("bifrost node address: ${addr}.", ("addr", address));
+            ilog("bifrost crossaccount: ${addr}.", ("addr", crossaccount));
+            ilog("bifrost signer: ${addr}.", ("addr", signer));
             my->config.bifrost_addr = address;
-            my->config.bifrost_account = account;
+            my->config.bifrost_crossaccount = crossaccount;
+            my->config.bifrost_signer = signer;
          } else {
             my->config.bifrost_addr = "127.0.0.1:9944";
-            my->config.bifrost_account = "bob";
+            my->config.bifrost_crossaccount = "bifrostcross";
+            my->config.bifrost_crossaccount = "//Alice";
          }
 
          if (options.at("delete-relay-history").as<bool>()) {

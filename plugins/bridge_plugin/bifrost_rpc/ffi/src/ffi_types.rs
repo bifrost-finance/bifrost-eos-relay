@@ -14,6 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Bifrost.  If not, see <http://www.gnu.org/licenses/>.
 
+use crate::Error;
 use eos_chain::{
     Action, AccountName, ActionName, ActionReceipt, PermissionLevel, Checksum256,
     Signature, BlockHeader, Extension, utils::flat_map::FlatMap, UnsignedInt, PublicKey,
@@ -22,7 +23,6 @@ use eos_chain::{
 use std::{
     convert::TryInto,
     ffi::{CStr, CString},
-    fmt::{self, Display},
     marker::PhantomData,
     mem,
     ops::Deref,
@@ -35,36 +35,6 @@ use std::{
 #[allow(non_camel_case_types)]
 pub(crate) type size_t = usize;
 pub(crate) type FFIResult<T> = std::result::Result<T, Error>;
-
-#[derive(Clone, Debug)]
-pub enum Error {
-    NullPtr(String),
-    CStrConvertError,
-    PublicKeyError,
-    SignatureError,
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
-            Self::NullPtr(ref who_is_null) => write!(f, "{} is null pointer.", who_is_null),
-            Self::CStrConvertError => write!(f, "Failed to convert c string to rust string."),
-            Self::PublicKeyError => write!(f, "Failed to convert string to PublicKey."),
-            Self::SignatureError => write!(f, "Failed to convert string to Signature."),
-        }
-    }
-}
-
-impl std::error::Error for Error {
-    fn description(&self) -> &str {
-        match *self {
-            Self::NullPtr(_) => "Null pointer.",
-            Self::CStrConvertError => "Failed to convert c string to rust string",
-            Self::PublicKeyError => "Failed to convert string to PublicKeyError.",
-            Self::SignatureError => "Failed to convert string to Signature.",
-        }
-    }
-}
 
 #[derive(Clone, Debug)]
 #[repr(C)]
