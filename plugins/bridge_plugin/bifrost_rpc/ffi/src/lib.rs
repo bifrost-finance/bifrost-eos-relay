@@ -90,7 +90,7 @@ pub extern "C" fn change_schedule(
         if url.is_err() {
             return generate_raw_result(false, "This is not an valid bifrost node address.");
         }
-        format!("ws://{}", url.unwrap())
+        url.unwrap()
     };
 
     let signer = {
@@ -247,7 +247,7 @@ pub extern "C" fn prove_action(
         if url.is_err() {
             return generate_raw_result(false, "This is not an valid bifrost node address.");
         }
-        format!("ws://{}", url.unwrap())
+        url.unwrap()
     };
 
     let signer = {

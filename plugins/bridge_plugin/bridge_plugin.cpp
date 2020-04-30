@@ -561,8 +561,8 @@ namespace eosio {
 
    void bridge_plugin::set_program_options(options_description &, options_description &cfg) {
       cfg.add_options()
-              ("bifrost-node", bpo::value<string>()->default_value("127.0.0.1:9944"),
-               "This is sopposed to be a bifrost node address like: 127.0.0.1");
+              ("bifrost-node", bpo::value<string>()->default_value("ws://127.0.0.1:9944"),
+               "This is sopposed to be a bifrost node address like: ws://127.0.0.1:9944");
       cfg.add_options()
               ("bifrost-crossaccount", bpo::value<string>()->default_value("bifrostcross"),
                "This is sopposed to be a bifrost crossaccount like: bifrostcross");
@@ -585,13 +585,13 @@ namespace eosio {
             auto crossaccount = options.at("bifrost-crossaccount").as<std::string>();
             auto signer = options.at("bifrost-signer").as<std::string>();
             ilog("bifrost node address: ${addr}.", ("addr", address));
-            ilog("bifrost crossaccount: ${addr}.", ("addr", crossaccount));
-            ilog("bifrost signer: ${addr}.", ("addr", signer));
+            ilog("bifrost crossaccount: ${crossaccount}.", ("crossaccount", crossaccount));
+            ilog("bifrost signer: ${signer}.", ("signer", signer));
             my->config.bifrost_addr = address;
             my->config.bifrost_crossaccount = crossaccount;
             my->config.bifrost_signer = signer;
          } else {
-            my->config.bifrost_addr = "127.0.0.1:9944";
+            my->config.bifrost_addr = "ws://127.0.0.1:9944";
             my->config.bifrost_crossaccount = "bifrostcross";
             my->config.bifrost_crossaccount = "//Alice";
          }
