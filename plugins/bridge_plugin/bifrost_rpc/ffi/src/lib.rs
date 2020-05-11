@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Bifrost.  If not, see <http://www.gnu.org/licenses/>.
 
-use eos_chain::{Action, ActionReceipt, Checksum256, IncrementalMerkle, SignedBlockHeader};
+use eos_chain::{Action, ActionReceipt, Checksum256, IncrementalMerkle, ProducerAuthoritySchedule, SignedBlockHeader};
 use std::{
     convert::TryInto,
     fmt::{self, Display},
@@ -38,7 +38,7 @@ pub enum Error {
     PublicKeyError,
     SignatureError,
     WrongSudoSeed,
-    SubxtError,
+    SubxtError(&'static str),
 }
 
 impl Display for Error {
@@ -49,7 +49,7 @@ impl Display for Error {
             Self::PublicKeyError => write!(f, "Failed to convert string to PublicKey."),
             Self::SignatureError => write!(f, "Failed to convert string to Signature."),
             Self::WrongSudoSeed => write!(f, "Wrong sudo seed, failed to sign transaction."),
-            Self::SubxtError => write!(f, "Error from subxt crate."),
+            Self::SubxtError(e) => write!(f, "Error from subxt crate: {}", e),
         }
     }
 }
@@ -62,24 +62,26 @@ impl std::error::Error for Error {
             Self::PublicKeyError => "Failed to convert string to PublicKeyError.",
             Self::SignatureError => "Failed to convert string to Signature.",
             Self::WrongSudoSeed => "Wrong sudo seed, failed to sign transaction.",
-            Self::SubxtError => "Error from subxt crate.",
+            Self::SubxtError(e) => e,
         }
     }
 }
 
 #[no_mangle]
 pub extern "C" fn change_schedule(
-    url:             *const c_char,
-    signer:          *const c_char,
-    imcre_merkle:    *const IncrementalMerkleFFI,
-    blocks_ffi:      *const SignedBlockHeaderFFI,
-    blocks_ffi_size: size_t,
-    ids_list:        *const Checksum256FFI,
-    ids_list_size:   size_t
+    url:                  *const c_char,
+    signer:               *const c_char,
+    legacy_schedule_hash: Checksum256,
+    schedule:             *const ProducerAuthorityScheduleFFI,
+    imcre_merkle:         *const IncrementalMerkleFFI,
+    blocks_ffi:           *const SignedBlockHeaderFFI,
+    blocks_ffi_size:      size_t,
+    ids_list:             *const Checksum256FFI,
+    ids_list_size:        size_t
 ) -> Box<RpcResponse> {
     // check pointers null or not
-    match (url.is_null(), signer.is_null(), imcre_merkle.is_null(), blocks_ffi.is_null(), ids_list.is_null()) {
-        (false, false, false, false, false) => (),
+    match (url.is_null(), signer.is_null(), schedule.is_null(), imcre_merkle.is_null(), blocks_ffi.is_null(), ids_list.is_null()) {
+        (false, false, false, false, false, false) => (),
         _ => {
             return generate_raw_result(false, "cannot send action to bifrost node to prove it due to there're null points");
         }
@@ -99,6 +101,15 @@ pub extern "C" fn change_schedule(
             return generate_raw_result(false, "This is not an valid bifrost node address.");
         }
         signer.unwrap()
+    };
+
+    let new_schedule = {
+        let schedule_ffi = &unsafe { ptr::read(schedule) };
+        let new_schedule: Result<ProducerAuthoritySchedule, _> = schedule_ffi.try_into();
+        if new_schedule.is_err() {
+            return generate_raw_result(false, new_schedule.unwrap_err().to_string());
+        }
+        new_schedule.unwrap()
     };
 
     let merkle: IncrementalMerkle = {
@@ -139,6 +150,8 @@ pub extern "C" fn change_schedule(
         crate::rpc_calls::change_schedule_call(
             url,
             signer,
+            legacy_schedule_hash,
+            new_schedule,
             merkle,
             block_headers,
             ids_lists,

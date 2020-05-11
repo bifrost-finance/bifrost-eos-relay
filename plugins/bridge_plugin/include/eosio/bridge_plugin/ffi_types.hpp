@@ -221,4 +221,98 @@ struct signed_block_header_ffi {
    }
 };
 
+struct key_weight_ffi {
+   char                            *key;
+   uint16_t                        weight;
+   key_weight_ffi() {
+      weight = 0;
+      key = nullptr;
+   }
+   key_weight_ffi(const key_weight &kw) {
+      weight = kw.weight;
+      std::string sig = kw.key.to_string();
+      key = new char[sig.size() + 1];
+      strcpy(key, sig.c_str());
+   }
+//   ~key_weight_ffi() {
+//      if (key) delete []key;
+//   }
+};
+
+struct block_signing_authority_v0_ffi {
+   uint32_t threshold;
+   key_weight_ffi *keys;
+   size_t keys_size;
+
+   block_signing_authority_v0_ffi() {
+      threshold = 0;
+      keys = nullptr;
+      keys_size = 0;
+   }
+
+   block_signing_authority_v0_ffi(const block_signing_authority_v0 &v0) {
+      threshold = v0.threshold;
+      keys_size = v0.keys.size();
+      keys = new key_weight_ffi[keys_size];
+      for (size_t i = 0; i < keys_size; ++i) {
+         key_weight_ffi ffi = key_weight_ffi(v0.keys[i]);
+         memcpy(&keys[i], &ffi, sizeof(ffi));
+      }
+   }
+
+//   ~block_signing_authority_v0_ffi() {
+//      if (keys) delete []keys;
+//   }
+};
+
+struct producer_authority_ffi {
+   account_name producer_name;
+   int tag;
+   block_signing_authority_v0_ffi *v0_ffi;
+
+   producer_authority_ffi() {
+      producer_name = account_name((uint64_t)0);
+      tag = 0;
+      v0_ffi = nullptr;
+   }
+
+   producer_authority_ffi(producer_authority authority) {
+      producer_name = authority.producer_name;
+
+      tag = authority.authority.which();
+      auto v0 = authority.authority.get<block_signing_authority_v0>();
+      v0_ffi = new block_signing_authority_v0_ffi(v0);
+   }
+
+//   ~producer_authority_ffi() {
+//      if (authority_ffi) delete authority_ffi;
+//   }
+};
+
+struct producer_authority_schedule_ffi {
+   int version;
+   producer_authority_ffi *producers_ffi;
+   size_t producers_size;
+
+   producer_authority_schedule_ffi() {
+      version = 0;
+      producers_size = 0;
+      producers_ffi = nullptr;
+   }
+
+   producer_authority_schedule_ffi(const producer_authority_schedule &schedule) {
+      version = schedule.version;
+      producers_size = schedule.producers.size();
+      producers_ffi = new producer_authority_ffi[producers_size];
+      for (size_t i = 0; i < producers_size; ++i) {
+         auto ffi = producer_authority_ffi(schedule.producers[i]);
+         memcpy(&producers_ffi[i], &ffi, sizeof(ffi));
+      }
+   }
+
+   ~producer_authority_schedule_ffi() {
+      if (producers_ffi) delete []producers_ffi;
+   }
+};
+
 }

@@ -15,12 +15,14 @@
 // along with Bifrost.  If not, see <http://www.gnu.org/licenses/>.
 
 use codec::Encode;
-use eos_chain::{Action, ActionReceipt, Checksum256, IncrementalMerkle, SignedBlockHeader};
+use eos_chain::{Action, ActionReceipt, Checksum256, IncrementalMerkle, ProducerAuthoritySchedule, SignedBlockHeader};
 use subxt::{DefaultNodeRuntime as Runtime, Call, Client};
 use sp_core::{sr25519::Pair, Pair as TraitPair};
 
 #[derive(Encode)]
 pub struct ChangeScheduleArgs {
+	legacy_schedule_hash: Checksum256,
+	schedule: ProducerAuthoritySchedule,
 	merkle: IncrementalMerkle,
 	block_headers: Vec<SignedBlockHeader>,
 	block_ids_list: Vec<Vec<Checksum256>>
@@ -37,21 +39,25 @@ pub struct ProveActionArgs {
 }
 
 pub async fn change_schedule_call(
-	url: impl AsRef<str>,
-	signer: impl AsRef<str>,
-	merkle: IncrementalMerkle,
-	block_headers: Vec<SignedBlockHeader>,
-	block_ids_list: Vec<Vec<Checksum256>>
+	url:                  impl AsRef<str>,
+	signer:               impl AsRef<str>,
+	legacy_schedule_hash: Checksum256,
+	schedule:             ProducerAuthoritySchedule,
+	merkle:               IncrementalMerkle,
+	block_headers:        Vec<SignedBlockHeader>,
+	block_ids_list:       Vec<Vec<Checksum256>>
 ) -> Result<String, crate::Error> {
 	let client: Client<Runtime> = subxt::ClientBuilder::new()
 		.set_url(url.as_ref())
 		.build()
 		.await
-		.map_err(|_| crate::Error::SubxtError)?;
+		.map_err(|_| crate::Error::SubxtError("failed to create subxt client"))?;
 
 	let signer = Pair::from_string(signer.as_ref(), None).map_err(|_| crate::Error::WrongSudoSeed)?;
 
 	let args = ChangeScheduleArgs {
+		legacy_schedule_hash,
+		schedule,
 		merkle,
 		block_headers,
 		block_ids_list,
@@ -59,29 +65,29 @@ pub async fn change_schedule_call(
 
 	let proposal = client.metadata().module_with_calls("BridgeEos")
 		.and_then(|module| module.call("change_schedule", args))
-		.map_err(|_| crate::Error::SubxtError)?;
+		.map_err(|_| crate::Error::SubxtError("failed to compose a sudo call"))?;
 	let call = Call::new("Sudo", "sudo", proposal);
-	let xt = client.xt(signer, None).await.map_err(|_| crate::Error::SubxtError)?;
-	let hash = xt.submit(call).await.map_err(|_| crate::Error::SubxtError)?;
+	let xt = client.xt(signer, None).await.map_err(|_| crate::Error::SubxtError("failed to sign transaction"))?;
+	let block_hash = xt.submit(call).await.map_err(|_| crate::Error::SubxtError("failed to commit this transaction"))?;
 
-	Ok(hash.to_string())
+	Ok(block_hash.to_string())
 }
 
 pub async fn prove_action_call(
-	url: impl AsRef<str>,
-	signer: impl AsRef<str>,
-	action: Action,
-	action_receipt: ActionReceipt,
+	url:                 impl AsRef<str>,
+	signer:              impl AsRef<str>,
+	action:              Action,
+	action_receipt:      ActionReceipt,
 	action_merkle_paths: Vec<Checksum256>,
-	merkle: IncrementalMerkle,
-	block_headers: Vec<SignedBlockHeader>,
-	block_ids_list: Vec<Vec<Checksum256>>
+	merkle:              IncrementalMerkle,
+	block_headers:       Vec<SignedBlockHeader>,
+	block_ids_list:      Vec<Vec<Checksum256>>
 ) -> Result<String, crate::Error> {
 	let client: Client<Runtime> = subxt::ClientBuilder::new()
 		.set_url(url.as_ref())
 		.build()
 		.await
-		.map_err(|_| crate::Error::SubxtError)?;
+		.map_err(|_| crate::Error::SubxtError("failed to create subxt client"))?;
 
 	let signer = Pair::from_string(signer.as_ref(), None).map_err(|_| crate::Error::WrongSudoSeed)?;
 
@@ -96,10 +102,10 @@ pub async fn prove_action_call(
 
 	let proposal = client.metadata().module_with_calls("BridgeEos")
 		.and_then(|module| module.call("prove_action", args))
-		.map_err(|_| crate::Error::SubxtError)?;
+		.map_err(|_| crate::Error::SubxtError("failed to compose a sudo call"))?;
 	let call = Call::new("Sudo", "sudo", proposal);
-	let xt = client.xt(signer, None).await.map_err(|_| crate::Error::SubxtError)?;
-	let hash = xt.submit(call).await.map_err(|_| crate::Error::SubxtError)?;
+	let xt = client.xt(signer, None).await.map_err(|_| crate::Error::SubxtError("failed to sign transaction"))?;
+	let block_hash = xt.submit(call).await.map_err(|_| crate::Error::SubxtError("failed to commit this transaction"))?;
 
-	Ok(hash.to_string())
+	Ok(block_hash.to_string())
 }

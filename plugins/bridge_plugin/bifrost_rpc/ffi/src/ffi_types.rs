@@ -18,7 +18,8 @@ use crate::Error;
 use eos_chain::{
     Action, AccountName, ActionName, ActionReceipt, PermissionLevel, Checksum256,
     Signature, BlockHeader, Extension, utils::flat_map::FlatMap, UnsignedInt, PublicKey,
-    ProducerKey, BlockTimestamp, ProducerSchedule, IncrementalMerkle, SignedBlockHeader
+    ProducerKey, BlockTimestamp, ProducerSchedule, IncrementalMerkle, SignedBlockHeader,
+    ProducerAuthoritySchedule, ProducerAuthority, BlockSigningAuthorityV0, BlockSigningAuthority, KeyWeight
 };
 use std::{
     convert::TryInto,
@@ -347,6 +348,122 @@ impl<'a> TryInto<SignedBlockHeader> for &'a SignedBlockHeaderFFI {
         Ok(SignedBlockHeader {
             block_header,
             producer_signature
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+#[repr(C)]
+pub struct ProducerAuthorityScheduleFFI {
+    pub version: c_uint,
+    pub producers: *const ProducerAuthorityFFI, // should be 21 producers
+    pub producers_size: usize,
+}
+
+impl<'a> TryInto<ProducerAuthoritySchedule> for &'a ProducerAuthorityScheduleFFI {
+    type Error = Error;
+    fn try_into(self) -> Result<ProducerAuthoritySchedule, Self::Error> {
+        if self.producers.is_null() {
+            return Err(Error::NullPtr("ProducerAuthorityScheduleFFI".to_owned()));
+        }
+
+        let ffis = &unsafe { slice::from_raw_parts(self.producers, self.producers_size) };
+        let producers = {
+            let mut producers = Vec::with_capacity(self.producers_size);
+            for ffi in ffis.iter() {
+                producers.push(ffi.try_into()?);
+            }
+            producers
+        };
+
+        Ok(ProducerAuthoritySchedule {
+            version: self.version,
+            producers
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+#[repr(C)]
+pub struct ProducerAuthorityFFI {
+    pub producer_name: AccountName,
+    pub tag: UnsignedInt,
+    pub v0_ffi: *const BlockSigningAuthorityV0FFI,
+}
+
+impl<'a> TryInto<ProducerAuthority> for &'a ProducerAuthorityFFI {
+    type Error = Error;
+    fn try_into(self) -> Result<ProducerAuthority, Self::Error> {
+        if self.v0_ffi.is_null() {
+            return Err(Error::NullPtr("ProducerAuthorityFFI".to_owned()));
+        }
+
+        let authority = {
+            let tag = self.tag.clone();
+            let v0_ffi = &unsafe { ptr::read(self.v0_ffi) };
+            let authority_v0: BlockSigningAuthorityV0 = v0_ffi.try_into()?;
+            BlockSigningAuthority(tag, authority_v0)
+        };
+
+        Ok(ProducerAuthority {
+            producer_name: self.producer_name.clone(),
+            authority
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+#[repr(C)]
+pub struct BlockSigningAuthorityV0FFI {
+    pub threshold: u32,
+    pub keys: *const KeyWeightFFI,
+    pub keys_size: usize,
+}
+
+impl<'a> TryInto<BlockSigningAuthorityV0> for &'a BlockSigningAuthorityV0FFI {
+    type Error = Error;
+    fn try_into(self) -> Result<BlockSigningAuthorityV0, Self::Error> {
+        if self.keys.is_null() {
+            return Err(Error::NullPtr("BlockSigningAuthorityV0FFI".to_owned()));
+        }
+
+        let key_weight_ffi = &unsafe { slice::from_raw_parts(self.keys, self.keys_size) };
+        let keys = {
+            let mut keys = Vec::with_capacity(self.keys_size);
+            for ffi in key_weight_ffi.iter() {
+                keys.push(ffi.try_into()?);
+            }
+            keys
+        };
+
+        Ok(BlockSigningAuthorityV0 {
+            threshold: self.threshold,
+            keys
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+#[repr(C)]
+pub struct KeyWeightFFI {
+    pub key: *const c_char,
+    pub weight: u16,
+}
+
+impl<'a> TryInto<KeyWeight> for &'a KeyWeightFFI {
+    type Error = Error;
+    fn try_into(self) -> Result<KeyWeight, Self::Error> {
+        if self.key.is_null() {
+            return Err(Error::NullPtr("KeyWeightFFI".to_owned()));
+        }
+
+        let chars = Char::new(self.key);
+        let key_str = char_to_str(&chars)?;
+        let key = PublicKey::from_str(&key_str).map_err(|_| Error::PublicKeyError)?;
+
+        Ok(KeyWeight {
+            weight: self.weight,
+            key,
         })
     }
 }

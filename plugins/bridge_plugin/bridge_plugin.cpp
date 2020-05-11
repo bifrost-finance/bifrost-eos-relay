@@ -197,11 +197,12 @@ namespace eosio {
       change_schedule_timer->expires_from_now(change_schedule_timeout);
       change_schedule_timer->async_wait([&](boost::system::error_code ec) {
          for (auto ti = change_schedule_index.begin(); ti != change_schedule_index.end(); ++ti) {
-            ilog("Changed schedule ${times} size. Changed status: ${status}", ("times", ti->bs.size())("status", ti->status));
+            ilog("collecting ${times} blocks for changing schedule. Changed status: ${status}", ("times", ti->bs.size())("status", ti->status));
             if (ti->status != 1) continue;
 
             auto tuple = collect_incremental_merkle_and_blocks(ti);
             incremental_merkle blockroot_merkle = ti->imcre_merkle;
+            producer_authority_schedule_ffi new_schedule = producer_authority_schedule_ffi(ti->schedule);
 
             auto block_headers = std::get<0>(tuple);
             auto block_id_lists = std::get<1>(tuple);
@@ -229,6 +230,8 @@ namespace eosio {
             rpc_result *result = change_schedule(
                config.bifrost_addr.data(),
                config.bifrost_signer.data(),
+               ti->legacy_schedule_hash,
+               &new_schedule,
                &merkle_ptr,
                blocks_ffi,
                block_headers.size(),
@@ -379,8 +382,17 @@ namespace eosio {
       auto blk = block->block;
       if (blk->new_producers) {
          // insert blocks
-         ilog("new producers list coming: ${to}", ("to", blk->new_producers));
-         auto trace = bridge_change_schedule { block->block_num, incremental_merkle(), std::vector<block_state>(), 0};
+         ilog("new producers list coming: ${to}", ("to", block->pending_schedule));
+         // ilog("new producers list coming: ${to}", ("to", block->active_schedule));
+
+         auto trace = bridge_change_schedule {
+            block->block_num,
+            incremental_merkle(),
+            std::vector<block_state>(),
+            0,
+            block->pending_schedule.schedule_hash, // this is legacy producer schedule hash
+            block->pending_schedule.schedule // this is new producer schedule
+         };
          change_schedule_index.insert(trace);
       }
 
@@ -593,7 +605,7 @@ namespace eosio {
          } else {
             my->config.bifrost_addr = "ws://127.0.0.1:9944";
             my->config.bifrost_crossaccount = "bifrostcross";
-            my->config.bifrost_crossaccount = "//Alice";
+            my->config.bifrost_signer = "//Alice";
          }
 
          if (options.at("delete-relay-history").as<bool>()) {

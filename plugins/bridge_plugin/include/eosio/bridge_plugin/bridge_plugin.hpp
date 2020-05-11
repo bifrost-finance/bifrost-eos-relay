@@ -42,6 +42,8 @@ struct bridge_change_schedule {
    incremental_merkle                       imcre_merkle;
    std::vector<block_state>                 bs;
    uint8_t                                  status = 0;
+   digest_type                              legacy_schedule_hash;
+   producer_authority_schedule              schedule;
 };
 
 struct bridge_prove_action {
