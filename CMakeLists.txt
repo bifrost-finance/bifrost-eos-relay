@@ -160,7 +160,7 @@ add_subdirectory( plugins )
 add_subdirectory( programs )
 add_subdirectory( scripts )
 add_subdirectory( unittests )
-add_subdirectory( tests )
+#add_subdirectory( tests )
 add_subdirectory( tools )
 
 if (NOT DISABLE_WASM_SPEC_TESTS)
