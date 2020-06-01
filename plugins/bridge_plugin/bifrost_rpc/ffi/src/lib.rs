@@ -182,7 +182,8 @@ pub extern "C" fn prove_action(
     blocks_ffi:          *const SignedBlockHeaderFFI,
     blocks_ffi_size:     size_t,
     ids_list:            *const Checksum256FFI,
-    ids_list_size:       size_t
+    ids_list_size:       size_t,
+    trx_id:              Checksum256
 ) -> Box<RpcResponse> {
     match (
         url.is_null(), signer.is_null(), act_ffi.is_null(), imcre_merkle.is_null(),
@@ -281,6 +282,7 @@ pub extern "C" fn prove_action(
             merkle,
             block_headers,
             ids_lists,
+            trx_id
         ).await
     });
 

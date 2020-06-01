@@ -53,7 +53,8 @@ eosio::rpc_result *prove_action(
    const eosio::signed_block_header_ffi         *blocks_ffi,
    size_t                                       blocks_ffi_size,
    const eosio::block_id_type_list              *ids_list,
-   size_t                                       ids_list_size
+   size_t                                       ids_list_size,
+   const eosio::transaction_id_type             trx_id
 );
 
 #ifdef __cplusplus

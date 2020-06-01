@@ -55,6 +55,7 @@ struct bridge_prove_action {
    incremental_merkle                       imcre_merkle;
    std::vector<block_state>                 bs;
    uint8_t                                  status = 0;
+   transaction_id_type                      trx_id;
 };
 
 struct action_transfer {

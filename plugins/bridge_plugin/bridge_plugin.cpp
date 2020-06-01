@@ -96,7 +96,7 @@ namespace eosio {
       std::tuple<std::vector<signed_block_header>, std::vector<std::vector<block_id_type>>, bool> collect_incremental_merkle_and_blocks(bridge_change_schedule_index::iterator &);
       std::tuple<std::vector<signed_block_header>, std::vector<std::vector<block_id_type>>, bool> collect_incremental_merkle_and_blocks(bridge_prove_action_index::iterator &);
 
-      void filter_action(const std::string &contract, const std::vector<action_trace> &, const std::vector<action_receipt> &);
+      void filter_action(const std::string &contract, const std::vector<action_trace> &, const std::vector<action_receipt> &, transaction_id_type&);
    };
 
    std::tuple<std::vector<signed_block_header>, std::vector<std::vector<block_id_type>>, bool> bridge_plugin_impl::collect_incremental_merkle_and_blocks(bridge_prove_action_index::iterator &ti) {
@@ -317,7 +317,8 @@ namespace eosio {
                blocks_ffi,
                block_headers.size(),
                ids_list,
-               block_id_lists.size()
+               block_id_lists.size(),
+               ti->trx_id
             );
 
             if (result) { // not null
@@ -419,9 +420,12 @@ namespace eosio {
    void bridge_plugin_impl::filter_action(
       const std::string &contract,
       const std::vector<action_trace> &action_traces,
-      const std::vector<action_receipt> &receipts
+      const std::vector<action_receipt> &receipts,
+      transaction_id_type &trx_id
    ) {
       int index = -1;
+      transaction_id_type current_trx_id = transaction_id_type();
+
       for (size_t i = 0; i < action_traces.size(); ++i) {
          // in case action traces has errors
          if (action_traces[i].except) {
@@ -438,6 +442,18 @@ namespace eosio {
             ilog("money to: ${to}", ("to", der_act.to));
             ilog("action_transfer: ${to}", ("to", der_act));
             ilog("action traces from: ${to}", ("to", action_traces[i]));
+
+            if (der_act.from == name(contract)) {
+               // Bifrost => EOS, do need to transaction id, and it depends.
+               // 1. redeem assets by Bifrost offchain worker, trigger from bifrost
+               // 2. directly redeem assets by cleos command, we may not need this transaction id
+               // ["bifrostcross", "jim", "43.0000 EOS", "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY@bifrost:vEOS"]
+               current_trx_id = trx_id;
+            }
+            if (der_act.to == name(contract)) {
+               // EOS => Bifrost, doesn't need to transaction id
+               current_trx_id = transaction_id_type();
+            }
 
             // deposit operation mean asset will be bridged to bifrost, it needs to verify action.
             // but withdraw operation, do not need to verify action.
@@ -462,7 +478,8 @@ namespace eosio {
          receipt_dig,
          incremental_merkle(),
          std::vector<block_state>(),
-         0
+         0,
+         current_trx_id
       };
       prove_action_index.insert(bt);
 
@@ -481,7 +498,8 @@ namespace eosio {
       auto acts = std::get<1>(t);
 
       auto action_traces = tt->action_traces;
-      filter_action(config.bifrost_crossaccount, action_traces, acts);
+      auto trx_id = tt->id; // get transaction id
+      filter_action(config.bifrost_crossaccount, action_traces, acts, trx_id);
    }
 
    void bridge_plugin_impl::open_db() {

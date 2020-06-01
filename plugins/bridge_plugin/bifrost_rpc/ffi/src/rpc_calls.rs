@@ -22,20 +22,21 @@ use sp_core::{sr25519::Pair, Pair as TraitPair};
 #[derive(Encode)]
 pub struct ChangeScheduleArgs {
 	legacy_schedule_hash: Checksum256,
-	schedule: ProducerAuthoritySchedule,
-	merkle: IncrementalMerkle,
-	block_headers: Vec<SignedBlockHeader>,
-	block_ids_list: Vec<Vec<Checksum256>>
+	schedule:             ProducerAuthoritySchedule,
+	merkle:               IncrementalMerkle,
+	block_headers:        Vec<SignedBlockHeader>,
+	block_ids_list:       Vec<Vec<Checksum256>>
 }
 
 #[derive(Encode)]
 pub struct ProveActionArgs {
-	action: Action,
-	action_receipt: ActionReceipt,
-	action_merkle_paths: Vec<Checksum256>,
-	merkle: IncrementalMerkle,
-	block_headers: Vec<SignedBlockHeader>,
-	block_ids_list: Vec<Vec<Checksum256>>
+	action:               Action,
+	action_receipt:       ActionReceipt,
+	action_merkle_paths:  Vec<Checksum256>,
+	merkle:               IncrementalMerkle,
+	block_headers:        Vec<SignedBlockHeader>,
+	block_ids_list:       Vec<Vec<Checksum256>>,
+	trx_id:               Checksum256
 }
 
 pub async fn change_schedule_call(
@@ -81,7 +82,8 @@ pub async fn prove_action_call(
 	action_merkle_paths: Vec<Checksum256>,
 	merkle:              IncrementalMerkle,
 	block_headers:       Vec<SignedBlockHeader>,
-	block_ids_list:      Vec<Vec<Checksum256>>
+	block_ids_list:      Vec<Vec<Checksum256>>,
+	trx_id:              Checksum256
 ) -> Result<String, crate::Error> {
 	let client: Client<Runtime> = subxt::ClientBuilder::new()
 		.set_url(url.as_ref())
@@ -98,6 +100,7 @@ pub async fn prove_action_call(
 		merkle,
 		block_headers,
 		block_ids_list,
+		trx_id,
 	};
 
 	let proposal = client.metadata().module_with_calls("BridgeEos")
