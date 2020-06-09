@@ -19,6 +19,10 @@ use eos_chain::{Action, ActionReceipt, Checksum256, IncrementalMerkle, ProducerA
 use subxt::{DefaultNodeRuntime as Runtime, Call, Client};
 use sp_core::{sr25519::Pair, Pair as TraitPair};
 
+const BridgeModule: &'static str = "BridgeEos";
+const ChangeScheduleCall: &'static str = "change_schedule";
+const ProveActionCall: &'static str = "prove_action";
+
 #[derive(Encode)]
 pub struct ChangeScheduleArgs {
 	legacy_schedule_hash: Checksum256,
@@ -64,10 +68,7 @@ pub async fn change_schedule_call(
 		block_ids_list,
 	};
 
-	let proposal = client.metadata().module_with_calls("BridgeEos")
-		.and_then(|module| module.call("change_schedule", args))
-		.map_err(|_| crate::Error::SubxtError("failed to compose a sudo call"))?;
-	let call = Call::new("Sudo", "sudo", proposal);
+	let call = Call::new(BridgeModule, ChangeScheduleCall, args);
 	let xt = client.xt(signer, None).await.map_err(|_| crate::Error::SubxtError("failed to sign transaction"))?;
 	let block_hash = xt.submit(call).await.map_err(|_| crate::Error::SubxtError("failed to commit this transaction"))?;
 
@@ -103,10 +104,7 @@ pub async fn prove_action_call(
 		trx_id,
 	};
 
-	let proposal = client.metadata().module_with_calls("BridgeEos")
-		.and_then(|module| module.call("prove_action", args))
-		.map_err(|_| crate::Error::SubxtError("failed to compose a sudo call"))?;
-	let call = Call::new("Sudo", "sudo", proposal);
+	let call = Call::new(BridgeModule, ProveActionCall, args);
 	let xt = client.xt(signer, None).await.map_err(|_| crate::Error::SubxtError("failed to sign transaction"))?;
 	let block_hash = xt.submit(call).await.map_err(|_| crate::Error::SubxtError("failed to commit this transaction"))?;
 
