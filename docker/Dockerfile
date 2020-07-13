@@ -12,7 +12,7 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- -y && \
 	export PATH="$PATH:$HOME/.cargo/bin"
 
 RUN git clone -b $branch https://github.com/bifrost-codes/bifrost-eos-relay.git --recursive
-RUN cd bifrost-eos-relay && git checkout v2.0 && git submodule update --init --recursive
+RUN cd bifrost-eos-relay && git checkout master && git submodule update --init --recursive
 RUN git config --global user.email "you@example.com" && git config --global user.name "Your Name"
 RUN apt install wget -y && wget https://dl.bintray.com/boostorg/release/1.70.0/source/boost_1_70_0.tar.bz2 \
 	&& tar -xvf boost_1_70_0.tar.bz2 && cd boost_1_70_0 && \

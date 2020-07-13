@@ -15,32 +15,36 @@
 // along with Bifrost.  If not, see <http://www.gnu.org/licenses/>.
 
 use codec::Encode;
+use core::marker::PhantomData;
 use eos_chain::{Action, ActionReceipt, Checksum256, IncrementalMerkle, ProducerAuthoritySchedule, SignedBlockHeader};
-use subxt::{DefaultNodeRuntime as Runtime, Call, Client};
+use subxt::{PairSigner, DefaultNodeRuntime as BifrostRuntime, Call, Client, system::{System, SystemEventsDecoder}};
 use sp_core::{sr25519::Pair, Pair as TraitPair};
 
-const BridgeModule: &'static str = "BridgeEos";
-const ChangeScheduleCall: &'static str = "change_schedule";
-const ProveActionCall: &'static str = "prove_action";
+#[subxt::module]
+pub trait BridgeEos: System {}
 
-#[derive(Encode)]
-pub struct ChangeScheduleArgs {
+impl BridgeEos for BifrostRuntime {}
+
+#[derive(Clone, Debug, PartialEq, Call, Encode)]
+pub struct ChangeScheduleCall<T: BridgeEos> {
 	legacy_schedule_hash: Checksum256,
 	schedule:             ProducerAuthoritySchedule,
 	merkle:               IncrementalMerkle,
 	block_headers:        Vec<SignedBlockHeader>,
-	block_ids_list:       Vec<Vec<Checksum256>>
+	block_ids_list:       Vec<Vec<Checksum256>>,
+	pub _runtime:         PhantomData<T>,
 }
 
-#[derive(Encode)]
-pub struct ProveActionArgs {
+#[derive(Clone, Debug, PartialEq, Call, Encode)]
+pub struct ProveActionCall<T: BridgeEos> {
 	action:               Action,
 	action_receipt:       ActionReceipt,
 	action_merkle_paths:  Vec<Checksum256>,
 	merkle:               IncrementalMerkle,
 	block_headers:        Vec<SignedBlockHeader>,
 	block_ids_list:       Vec<Vec<Checksum256>>,
-	trx_id:               Checksum256
+	trx_id:               Checksum256,
+	pub _runtime:         PhantomData<T>,
 }
 
 pub async fn change_schedule_call(
@@ -52,25 +56,24 @@ pub async fn change_schedule_call(
 	block_headers:        Vec<SignedBlockHeader>,
 	block_ids_list:       Vec<Vec<Checksum256>>
 ) -> Result<String, crate::Error> {
-	let client: Client<Runtime> = subxt::ClientBuilder::new()
+	let client: Client<BifrostRuntime> = subxt::ClientBuilder::new()
 		.set_url(url.as_ref())
 		.build()
 		.await
 		.map_err(|_| crate::Error::SubxtError("failed to create subxt client"))?;
 
 	let signer = Pair::from_string(signer.as_ref(), None).map_err(|_| crate::Error::WrongSudoSeed)?;
+	let signer = PairSigner::<BifrostRuntime, Pair>::new(signer);
 
-	let args = ChangeScheduleArgs {
+	let args = ChangeScheduleCall::<BifrostRuntime> {
 		legacy_schedule_hash,
 		schedule,
 		merkle,
 		block_headers,
 		block_ids_list,
+		_runtime: PhantomData
 	};
-
-	let call = Call::new(BridgeModule, ChangeScheduleCall, args);
-	let xt = client.xt(signer, None).await.map_err(|_| crate::Error::SubxtError("failed to sign transaction"))?;
-	let block_hash = xt.submit(call).await.map_err(|_| crate::Error::SubxtError("failed to commit this transaction"))?;
+	let block_hash = client.submit(args, &signer).await.map_err(|_| crate::Error::SubxtError("failed to commit this transaction"))?;
 
 	Ok(block_hash.to_string())
 }
@@ -86,15 +89,16 @@ pub async fn prove_action_call(
 	block_ids_list:      Vec<Vec<Checksum256>>,
 	trx_id:              Checksum256
 ) -> Result<String, crate::Error> {
-	let client: Client<Runtime> = subxt::ClientBuilder::new()
+	let client: Client<BifrostRuntime> = subxt::ClientBuilder::new()
 		.set_url(url.as_ref())
 		.build()
 		.await
 		.map_err(|_| crate::Error::SubxtError("failed to create subxt client"))?;
 
 	let signer = Pair::from_string(signer.as_ref(), None).map_err(|_| crate::Error::WrongSudoSeed)?;
+	let signer = PairSigner::<BifrostRuntime, Pair>::new(signer);
 
-	let args = ProveActionArgs {
+	let call = ProveActionCall::<BifrostRuntime> {
 		action,
 		action_receipt,
 		action_merkle_paths,
@@ -102,11 +106,9 @@ pub async fn prove_action_call(
 		block_headers,
 		block_ids_list,
 		trx_id,
+		_runtime: PhantomData
 	};
-
-	let call = Call::new(BridgeModule, ProveActionCall, args);
-	let xt = client.xt(signer, None).await.map_err(|_| crate::Error::SubxtError("failed to sign transaction"))?;
-	let block_hash = xt.submit(call).await.map_err(|_| crate::Error::SubxtError("failed to commit this transaction"))?;
+	let block_hash = client.submit(call, &signer).await.map_err(|_| crate::Error::SubxtError("failed to commit this transaction"))?;
 
 	Ok(block_hash.to_string())
 }
