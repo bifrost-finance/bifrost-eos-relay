@@ -17,7 +17,7 @@
 use codec::Encode;
 use core::marker::PhantomData;
 use eos_chain::{Action, ActionReceipt, Checksum256, IncrementalMerkle, ProducerAuthoritySchedule, SignedBlockHeader};
-use subxt::{PairSigner, DefaultNodeRuntime as BifrostRuntime, Call, Client, system::{System, SystemEventsDecoder}};
+use subxt::{PairSigner, DefaultNodeRuntime as BifrostRuntime, Call, Client, system::{AccountStoreExt, System, SystemEventsDecoder}};
 use sp_core::{sr25519::Pair, Pair as TraitPair};
 
 #[subxt::module]
@@ -96,7 +96,13 @@ pub async fn prove_action_call(
 		.map_err(|_| crate::Error::SubxtError("failed to create subxt client"))?;
 
 	let signer = Pair::from_string(signer.as_ref(), None).map_err(|_| crate::Error::WrongSudoSeed)?;
-	let signer = PairSigner::<BifrostRuntime, Pair>::new(signer);
+	let mut signer = PairSigner::<BifrostRuntime, Pair>::new(signer);
+
+	// set nonce to avoid multiple trades using the same nonce, that will cause some trades will be abandoned.
+	// https://substrate.dev/docs/en/knowledgebase/learn-substrate/tx-pool
+	let nonce = client.account(&signer.signer().public().into(), None).await.map_err(|_| crate::Error::WrongSudoSeed)?.nonce;
+	let nonce = update_nonce(nonce);
+	signer.set_nonce(nonce);
 
 	let call = ProveActionCall::<BifrostRuntime> {
 		action,
@@ -111,4 +117,21 @@ pub async fn prove_action_call(
 	let block_hash = client.submit(call, &signer).await.map_err(|_| crate::Error::SubxtError("failed to commit this transaction"))?;
 
 	Ok(block_hash.to_string())
+}
+
+// update nonce to avoid using the same nonce
+#[allow(non_upper_case_globals)]
+pub fn update_nonce(current_nonce: u32) -> u32 {
+	static mut last_nonce: u32 = 0;
+	if unsafe { current_nonce > last_nonce } {
+		unsafe {
+			last_nonce = current_nonce;
+			last_nonce
+		}
+	} else {
+		unsafe {
+			last_nonce = last_nonce + 1;
+			last_nonce
+		}
+	}
 }
