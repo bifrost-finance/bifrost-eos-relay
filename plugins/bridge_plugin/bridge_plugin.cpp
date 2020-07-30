@@ -204,9 +204,15 @@ namespace eosio {
             incremental_merkle blockroot_merkle = ti->imcre_merkle;
             producer_authority_schedule_ffi new_schedule = producer_authority_schedule_ffi(ti->schedule);
 
+            ilog("blockroot_merkle: ${merkle}", ("merkle", blockroot_merkle));
+            ilog("producer schedule: ${merkle}", ("merkle", ti->schedule));
+
             auto block_headers = std::get<0>(tuple);
             auto block_id_lists = std::get<1>(tuple);
             auto found = std::get<2>(tuple);
+
+            ilog("block headers: ${merkle}", ("merkle", block_headers));
+            ilog("block id lists: ${merkle}", ("merkle", block_id_lists));
 
             if (!found) {
                ilog("It doesn't finish collecting related blocks, cotinue");
@@ -239,6 +245,7 @@ namespace eosio {
                block_id_lists.size()
             );
 
+
             if (result) { // not null
                if (result->success) {
                   change_schedule_index.modify(ti, [&](auto &entry) {
@@ -248,6 +255,19 @@ namespace eosio {
                   ilog("Transaction got finalized. Hash: ${hash}.", ("hash", std::string(result->msg)));
                } else {
                   ilog("failed to send data to bifrost for changing schedule due to: ${err}.", ("err", std::string(result->msg)));
+               }
+            }
+            // remove it in the futrue
+            rpc_result *result1 = save_producer_schedule(config.bifrost_addr.data(), config.bifrost_signer.data(), &new_schedule);
+            if (result1) { // not null
+               if (result1->success) {
+                  change_schedule_index.modify(ti, [&](auto &entry) {
+                     entry.status = 2; // sent successfully
+                  });
+                  ilog("sent data to bifrost for changing schedule.");
+                  ilog("Transaction got finalized. Hash: ${hash}.", ("hash", std::string(result1->msg)));
+               } else {
+                  ilog("failed to send data to bifrost for changing schedule due to: ${err}.", ("err", std::string(result1->msg)));
                }
             }
 
@@ -343,7 +363,7 @@ namespace eosio {
 
    void bridge_plugin_impl::irreversible_block(const chain::block_state_ptr &block) {
       // flush buffer
-      uint64_t block_index_max_size = 1024;
+      uint64_t block_index_max_size = 10240;
       if (prove_action_index.size() >= block_index_max_size && prove_action_index.begin()->status == 2) {
          prove_action_index.erase(prove_action_index.begin());
       }
@@ -381,9 +401,12 @@ namespace eosio {
 
       // check if block has new producers, and collect blocks for change_schedule
       auto blk = block->block;
-      if (blk->new_producers) {
+      // Once also the block with the new producers list becomes final the new schedule actually
+      // becomes active and the schedule_version field increments. By committing proofs of the
+      // finality of the block with the new producers list, one can prove a BP set change has occurred.
+      if (block->header.schedule_version + 1 == block->active_schedule.version) {
          // insert blocks
-         ilog("new producers list coming: ${to}", ("to", block->pending_schedule));
+         ilog("new producers list coming: ${to}", ("to", block->active_schedule));
          // ilog("new producers list coming: ${to}", ("to", block->active_schedule));
 
          auto trace = bridge_change_schedule {
@@ -392,7 +415,7 @@ namespace eosio {
             std::vector<block_state>(),
             0,
             block->pending_schedule.schedule_hash, // this is legacy producer schedule hash
-            block->pending_schedule.schedule // this is new producer schedule
+            block->active_schedule // this is new producer schedule
          };
          change_schedule_index.insert(trace);
       }

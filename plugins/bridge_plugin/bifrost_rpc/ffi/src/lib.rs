@@ -26,6 +26,8 @@ use std::{
 mod ffi_types;
 use ffi_types::*;
 mod rpc_calls;
+// this module will be removed in the future
+mod submit_producers_schedule;
 
 #[derive(Clone, Debug)]
 pub enum Error {
@@ -59,6 +61,66 @@ impl std::error::Error for Error {
             Self::SignatureError => "Failed to convert string to Signature.",
             Self::WrongSudoSeed => "Wrong sudo seed, failed to sign transaction.",
             Self::SubxtError(e) => e,
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn save_producer_schedule(
+    url:                  *const c_char,
+    signer:               *const c_char,
+    schedule:             *const ProducerAuthorityScheduleFFI
+) -> Box<RpcResponse> {
+    // check pointers null or not
+    match (url.is_null(), signer.is_null(), schedule.is_null()) {
+        (false, false, false) => (),
+        _ => {
+            return generate_raw_result(false, "cannot send action to bifrost node to prove it due to there're null points");
+        }
+    }
+
+    let url = {
+        let url = char_to_string(url);
+        if url.is_err() {
+            return generate_raw_result(false, "This is not an valid bifrost node address.");
+        }
+        url.unwrap()
+    };
+
+    let signer = {
+        let signer = char_to_string(signer);
+        if signer.is_err() {
+            return generate_raw_result(false, "This is not an valid bifrost node address.");
+        }
+        signer.unwrap()
+    };
+
+    let new_schedule = {
+        let schedule_ffi = &unsafe { ptr::read(schedule) };
+        let new_schedule: Result<ProducerAuthoritySchedule, _> = schedule_ffi.try_into();
+        if new_schedule.is_err() {
+            return generate_raw_result(false, new_schedule.unwrap_err().to_string());
+        }
+        new_schedule.unwrap()
+    };
+
+    let result = futures::executor::block_on(async move {
+        crate::submit_producers_schedule::save_producer_schedule_call(
+            url,
+            signer,
+            new_schedule,
+        ).await
+    });
+
+    // send and watch extrinsic until finalized
+    match result {
+        Ok(tx_hash) => {
+            println!("[+] Transaction got finalized. Hash: {:?}\n", tx_hash);
+            generate_raw_result(true, tx_hash.to_string())
+        }
+        Err(e) => {
+            println!("[+] Transaction got failure due to: {:?}\n", e);
+            generate_raw_result(false, e.to_string())
         }
     }
 }
