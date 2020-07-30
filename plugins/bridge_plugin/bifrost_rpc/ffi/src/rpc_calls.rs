@@ -73,7 +73,8 @@ pub async fn change_schedule_call(
 		block_ids_list,
 		_runtime: PhantomData
 	};
-	let block_hash = client.submit(args, &signer).await.map_err(|_| crate::Error::SubxtError("failed to commit this transaction"))?;
+	let extrinsic = client.watch(args, &signer).await.map_err(|_| crate::Error::SubxtError("failed to commit this transaction"))?;
+	let block_hash = extrinsic.block;
 
 	Ok(block_hash.to_string())
 }
