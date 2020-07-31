@@ -204,15 +204,9 @@ namespace eosio {
             incremental_merkle blockroot_merkle = ti->imcre_merkle;
             producer_authority_schedule_ffi new_schedule = producer_authority_schedule_ffi(ti->schedule);
 
-            ilog("blockroot_merkle: ${merkle}", ("merkle", blockroot_merkle));
-            ilog("producer schedule: ${merkle}", ("merkle", ti->schedule));
-
             auto block_headers = std::get<0>(tuple);
             auto block_id_lists = std::get<1>(tuple);
             auto found = std::get<2>(tuple);
-
-            ilog("block headers: ${merkle}", ("merkle", block_headers));
-            ilog("block id lists: ${merkle}", ("merkle", block_id_lists));
 
             if (!found) {
                ilog("It doesn't finish collecting related blocks, cotinue");
@@ -233,30 +227,30 @@ namespace eosio {
                ids_list[i] = convert_ffi(block_id_lists[i]);
             }
 
-            rpc_result *result = change_schedule(
-               config.bifrost_addr.data(),
-               config.bifrost_signer.data(),
-               ti->legacy_schedule_hash,
-               &new_schedule,
-               &merkle_ptr,
-               blocks_ffi,
-               block_headers.size(),
-               ids_list,
-               block_id_lists.size()
-            );
+//            rpc_result *result = change_schedule(
+//               config.bifrost_addr.data(),
+//               config.bifrost_signer.data(),
+//               ti->legacy_schedule_hash,
+//               &new_schedule,
+//               &merkle_ptr,
+//               blocks_ffi,
+//               block_headers.size(),
+//               ids_list,
+//               block_id_lists.size()
+//            );
 
 
-            if (result) { // not null
-               if (result->success) {
-                  change_schedule_index.modify(ti, [&](auto &entry) {
-                     entry.status = 2; // sent successfully
-                  });
-                  ilog("sent data to bifrost for changing schedule.");
-                  ilog("Transaction got finalized. Hash: ${hash}.", ("hash", std::string(result->msg)));
-               } else {
-                  ilog("failed to send data to bifrost for changing schedule due to: ${err}.", ("err", std::string(result->msg)));
-               }
-            }
+//            if (result) { // not null
+//               if (result->success) {
+//                  change_schedule_index.modify(ti, [&](auto &entry) {
+//                     entry.status = 2; // sent successfully
+//                  });
+//                  ilog("sent data to bifrost for changing schedule.");
+//                  ilog("Transaction got finalized. Hash: ${hash}.", ("hash", std::string(result->msg)));
+//               } else {
+//                  ilog("failed to send data to bifrost for changing schedule due to: ${err}.", ("err", std::string(result->msg)));
+//               }
+//            }
             // remove it in the futrue
             rpc_result *result1 = save_producer_schedule(config.bifrost_addr.data(), config.bifrost_signer.data(), &new_schedule);
             if (result1) { // not null
