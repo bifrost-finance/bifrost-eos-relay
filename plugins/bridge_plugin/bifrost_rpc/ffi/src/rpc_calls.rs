@@ -115,7 +115,8 @@ pub async fn prove_action_call(
 		trx_id,
 		_runtime: PhantomData
 	};
-	let block_hash = client.submit(call, &signer).await.map_err(|_| crate::Error::SubxtError("failed to commit this transaction"))?;
+	let extrinsic = client.watch(call, &signer).await.map_err(|_| crate::Error::SubxtError("failed to commit this transaction"))?;
+	let block_hash = extrinsic.block;
 
 	Ok(block_hash.to_string())
 }

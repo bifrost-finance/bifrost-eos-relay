@@ -227,41 +227,28 @@ namespace eosio {
                ids_list[i] = convert_ffi(block_id_lists[i]);
             }
 
-//            rpc_result *result = change_schedule(
-//               config.bifrost_addr.data(),
-//               config.bifrost_signer.data(),
-//               ti->legacy_schedule_hash,
-//               &new_schedule,
-//               &merkle_ptr,
-//               blocks_ffi,
-//               block_headers.size(),
-//               ids_list,
-//               block_id_lists.size()
-//            );
+            rpc_result *result = change_schedule(
+               config.bifrost_addr.data(),
+               config.bifrost_signer.data(),
+               ti->legacy_schedule_hash,
+               &new_schedule,
+               &merkle_ptr,
+               blocks_ffi,
+               block_headers.size(),
+               ids_list,
+               block_id_lists.size()
+            );
 
 
-//            if (result) { // not null
-//               if (result->success) {
-//                  change_schedule_index.modify(ti, [&](auto &entry) {
-//                     entry.status = 2; // sent successfully
-//                  });
-//                  ilog("sent data to bifrost for changing schedule.");
-//                  ilog("Transaction got finalized. Hash: ${hash}.", ("hash", std::string(result->msg)));
-//               } else {
-//                  ilog("failed to send data to bifrost for changing schedule due to: ${err}.", ("err", std::string(result->msg)));
-//               }
-//            }
-            // remove it in the futrue
-            rpc_result *result1 = save_producer_schedule(config.bifrost_addr.data(), config.bifrost_signer.data(), &new_schedule);
-            if (result1) { // not null
-               if (result1->success) {
+            if (result) { // not null
+               if (result->success) {
                   change_schedule_index.modify(ti, [&](auto &entry) {
                      entry.status = 2; // sent successfully
                   });
                   ilog("sent data to bifrost for changing schedule.");
-                  ilog("Transaction got finalized. Hash: ${hash}.", ("hash", std::string(result1->msg)));
+                  ilog("Transaction got finalized. Hash: ${hash}.", ("hash", std::string(result->msg)));
                } else {
-                  ilog("failed to send data to bifrost for changing schedule due to: ${err}.", ("err", std::string(result1->msg)));
+                  ilog("failed to send data to bifrost for changing schedule due to: ${err}.", ("err", std::string(result->msg)));
                }
             }
 
