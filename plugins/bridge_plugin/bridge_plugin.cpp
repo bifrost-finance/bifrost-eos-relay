@@ -197,7 +197,6 @@ namespace eosio {
       change_schedule_timer->expires_from_now(change_schedule_timeout);
       change_schedule_timer->async_wait([&](boost::system::error_code ec) {
          for (auto ti = change_schedule_index.begin(); ti != change_schedule_index.end(); ++ti) {
-            ilog("collecting ${times} blocks for changing schedule. Changed status: ${status}", ("times", ti->bs.size())("status", ti->status));
             if (ti->status != 1) continue;
 
             auto tuple = collect_incremental_merkle_and_blocks(ti);
@@ -263,7 +262,6 @@ namespace eosio {
       prove_action_timer->expires_from_now(prove_action_timeout);
       prove_action_timer->async_wait([&](boost::system::error_code ec) {
          for (auto ti = prove_action_index.begin(); ti != prove_action_index.end(); ++ti) {
-            ilog("headers length: ${header_len}. status: ${status}", ("header_len", ti->bs.size())("status", ti->status));
             if (ti->status != 1) continue;
 
             auto tuple = collect_incremental_merkle_and_blocks(ti);
@@ -352,7 +350,7 @@ namespace eosio {
          change_schedule_index.erase(change_schedule_index.begin());
       }
 
-      ilog("irreversible_block: ${n}, id: ${id}, action_mroot: ${root}", ("n", block->block_num)("id", block->id)("root", block->header.action_mroot));
+      // ilog("irreversible_block: ${n}, id: ${id}, action_mroot: ${root}", ("n", block->block_num)("id", block->id)("root", block->header.action_mroot));
       auto bb = bridge_blocks{block->id, *block};
       if (block_index.size() >= block_index_max_size) {
          block_index.erase(block_index.begin());
@@ -361,6 +359,7 @@ namespace eosio {
 
       // collect blocks for prove_action
       for (auto iter = prove_action_index.begin(); iter !=prove_action_index.end(); ++iter) {
+         ilog("collecting headers for prove trade action: ${header_len}", ("header_len", iter->bs.size()));
          if (iter->status == 0 && iter->bs.size() <= 12 * 16) {
             prove_action_index.modify(iter, [=](auto &entry) {
                if (entry.block_num <= block->block_num) {
@@ -401,6 +400,7 @@ namespace eosio {
       }
 
       for (auto iter = change_schedule_index.begin(); iter !=change_schedule_index.end(); ++iter) {
+         ilog("collecting headers for verifying new schedule: ${header_len}", ("header_len", iter->bs.size()));
          if (iter->status == 0 && iter->bs.size() <= 12 * 16) {
             change_schedule_index.modify(iter, [=](auto &entry) {
                if (entry.block_num <= block->block_num) {
