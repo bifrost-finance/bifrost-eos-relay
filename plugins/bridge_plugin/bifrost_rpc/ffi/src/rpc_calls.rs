@@ -104,7 +104,7 @@ pub async fn prove_action_call(
 	// https://substrate.dev/docs/en/knowledgebase/learn-substrate/tx-pool
 	static atomic_nonce: AtomicU32 = AtomicU32::new(0);
 	let current_nonce = client.account(&signer.signer().public().into(), None).await.map_err(|_| crate::Error::WrongSudoSeed)?.nonce;
-	println!("signer current nonce is: {:?}", nonce);
+	println!("signer current nonce is: {:?}", current_nonce);
 	let next_nonce = get_latest_nonce(&atomic_nonce, current_nonce);
 	println!("signer next nonce is: {:?}", next_nonce);
 	signer.set_nonce(next_nonce);
