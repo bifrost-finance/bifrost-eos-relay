@@ -239,7 +239,6 @@ namespace eosio {
                block_id_lists.size()
             );
 
-
             if (result) { // not null
                if (result->success) {
                   change_schedule_index.modify(ti, [&](auto &entry) {

@@ -19,6 +19,7 @@ use core::marker::PhantomData;
 use eos_chain::{Action, ActionReceipt, Checksum256, IncrementalMerkle, ProducerAuthoritySchedule, SignedBlockHeader};
 use subxt::{PairSigner, DefaultNodeRuntime as BifrostRuntime, Call, Client, system::{AccountStoreExt, System, SystemEventsDecoder}};
 use sp_core::{sr25519::Pair, Pair as TraitPair};
+use std::sync::atomic::{AtomicU32, Ordering};
 
 #[subxt::module]
 pub trait BridgeEos: System {}
@@ -102,7 +103,9 @@ pub async fn prove_action_call(
 	// set nonce to avoid multiple trades using the same nonce, that will cause some trades will be abandoned.
 	// https://substrate.dev/docs/en/knowledgebase/learn-substrate/tx-pool
 	let nonce = client.account(&signer.signer().public().into(), None).await.map_err(|_| crate::Error::WrongSudoSeed)?.nonce;
-	let nonce = update_nonce(nonce);
+	println!("signer last nonce is: {:?}", nonce);
+	let nonce = atomic_update_nonce(nonce);
+	println!("current upodated signer nonce is: {:?}", nonce);
 	signer.set_nonce(nonce);
 
 	let call = ProveActionCall::<BifrostRuntime> {
@@ -115,8 +118,7 @@ pub async fn prove_action_call(
 		trx_id,
 		_runtime: PhantomData
 	};
-	let extrinsic = client.watch(call, &signer).await.map_err(|_| crate::Error::SubxtError("failed to commit this transaction"))?;
-	let block_hash = extrinsic.block;
+	let block_hash = client.submit(call, &signer).await.map_err(|_| crate::Error::SubxtError("failed to commit this transaction"))?;
 
 	Ok(block_hash.to_string())
 }
@@ -135,5 +137,18 @@ pub fn update_nonce(current_nonce: u32) -> u32 {
 			last_nonce = last_nonce + 1;
 			last_nonce
 		}
+	}
+}
+
+#[allow(non_upper_case_globals)]
+pub fn atomic_update_nonce(current_nonce: u32) -> u32 {
+	static atomic_num: AtomicU32 = AtomicU32::new(0);
+
+	if atomic_num.load(Ordering::Relaxed) < current_nonce {
+		atomic_num.swap(current_nonce, Ordering::Relaxed);
+		atomic_num.load(Ordering::Relaxed)
+	} else {
+		atomic_num.fetch_add(1, Ordering::SeqCst);
+		atomic_num.load(Ordering::Relaxed)
 	}
 }
