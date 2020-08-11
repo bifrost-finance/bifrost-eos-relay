@@ -359,7 +359,6 @@ namespace eosio {
 
       // collect blocks for prove_action
       for (auto iter = prove_action_index.begin(); iter !=prove_action_index.end(); ++iter) {
-         ilog("collecting headers for prove trade action: ${header_len}", ("header_len", iter->bs.size()));
          if (iter->status == 0 && iter->bs.size() <= 12 * 16) {
             prove_action_index.modify(iter, [=](auto &entry) {
                if (entry.block_num <= block->block_num) {
@@ -400,7 +399,6 @@ namespace eosio {
       }
 
       for (auto iter = change_schedule_index.begin(); iter !=change_schedule_index.end(); ++iter) {
-         ilog("collecting headers for verifying new schedule: ${header_len}", ("header_len", iter->bs.size()));
          if (iter->status == 0 && iter->bs.size() <= 12 * 16) {
             change_schedule_index.modify(iter, [=](auto &entry) {
                if (entry.block_num <= block->block_num) {

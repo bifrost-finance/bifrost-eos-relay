@@ -103,11 +103,11 @@ pub async fn prove_action_call(
 	// set nonce to avoid multiple trades using the same nonce, that will cause some trades will be abandoned.
 	// https://substrate.dev/docs/en/knowledgebase/learn-substrate/tx-pool
 	static atomic_nonce: AtomicU32 = AtomicU32::new(0);
-	let nonce = client.account(&signer.signer().public().into(), None).await.map_err(|_| crate::Error::WrongSudoSeed)?.nonce;
-	println!("signer last nonce is: {:?}", nonce);
-	let nonce = get_latest_nonce(&atomic_nonce, nonce);
-	println!("current upodated signer nonce is: {:?}", nonce);
-	signer.set_nonce(nonce);
+	let current_nonce = client.account(&signer.signer().public().into(), None).await.map_err(|_| crate::Error::WrongSudoSeed)?.nonce;
+	println!("signer current nonce is: {:?}", nonce);
+	let next_nonce = get_latest_nonce(&atomic_nonce, current_nonce);
+	println!("signer next nonce is: {:?}", next_nonce);
+	signer.set_nonce(next_nonce);
 
 	let call = ProveActionCall::<BifrostRuntime> {
 		action,
@@ -121,28 +121,12 @@ pub async fn prove_action_call(
 	};
 	let block_hash = client.submit(call, &signer).await.map_err(|_| crate::Error::SubxtError("failed to commit this transaction"))?;
 	// if trade success, change nonce
-	atomic_update_nonce(&atomic_nonce, nonce);
+	atomic_update_nonce(&atomic_nonce, current_nonce);
 
 	Ok(block_hash.to_string())
 }
 
 // update nonce to avoid using the same nonce
-#[allow(non_upper_case_globals)]
-pub fn update_nonce(current_nonce: u32) -> u32 {
-	static mut last_nonce: u32 = 0;
-	if unsafe { current_nonce > last_nonce } {
-		unsafe {
-			last_nonce = current_nonce;
-			last_nonce
-		}
-	} else {
-		unsafe {
-			last_nonce = last_nonce + 1;
-			last_nonce
-		}
-	}
-}
-
 pub fn get_latest_nonce(atomic_nonce: &AtomicU32, current_nonce: u32) -> u32 {
 	if atomic_nonce.load(Ordering::Relaxed) < current_nonce {
 		current_nonce
