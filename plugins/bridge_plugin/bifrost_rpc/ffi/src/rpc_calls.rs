@@ -102,9 +102,10 @@ pub async fn prove_action_call(
 
 	// set nonce to avoid multiple trades using the same nonce, that will cause some trades will be abandoned.
 	// https://substrate.dev/docs/en/knowledgebase/learn-substrate/tx-pool
+	static atomic_nonce: AtomicU32 = AtomicU32::new(0);
 	let nonce = client.account(&signer.signer().public().into(), None).await.map_err(|_| crate::Error::WrongSudoSeed)?.nonce;
 	println!("signer last nonce is: {:?}", nonce);
-	let nonce = atomic_update_nonce(nonce);
+	let nonce = get_latest_nonce(&atomic_nonce, nonce);
 	println!("current upodated signer nonce is: {:?}", nonce);
 	signer.set_nonce(nonce);
 
@@ -119,6 +120,8 @@ pub async fn prove_action_call(
 		_runtime: PhantomData
 	};
 	let block_hash = client.submit(call, &signer).await.map_err(|_| crate::Error::SubxtError("failed to commit this transaction"))?;
+	// if trade success, change nonce
+	atomic_update_nonce(&atomic_nonce, nonce);
 
 	Ok(block_hash.to_string())
 }
@@ -140,15 +143,18 @@ pub fn update_nonce(current_nonce: u32) -> u32 {
 	}
 }
 
-#[allow(non_upper_case_globals)]
-pub fn atomic_update_nonce(current_nonce: u32) -> u32 {
-	static atomic_num: AtomicU32 = AtomicU32::new(0);
-
-	if atomic_num.load(Ordering::Relaxed) < current_nonce {
-		atomic_num.swap(current_nonce, Ordering::Relaxed);
-		atomic_num.load(Ordering::Relaxed)
+pub fn get_latest_nonce(atomic_nonce: &AtomicU32, current_nonce: u32) -> u32 {
+	if atomic_nonce.load(Ordering::Relaxed) < current_nonce {
+		current_nonce
 	} else {
-		atomic_num.fetch_add(1, Ordering::SeqCst);
-		atomic_num.load(Ordering::Relaxed)
+		atomic_nonce.load(Ordering::Relaxed) + 1
+	}
+}
+
+pub fn atomic_update_nonce(atomic_nonce: &AtomicU32, current_nonce: u32) {
+	if atomic_nonce.load(Ordering::Relaxed) < current_nonce {
+		atomic_nonce.swap(current_nonce, Ordering::Relaxed);
+	} else {
+		atomic_nonce.fetch_add(1, Ordering::SeqCst);
 	}
 }
