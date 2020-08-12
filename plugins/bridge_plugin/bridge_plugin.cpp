@@ -398,6 +398,8 @@ namespace eosio {
          change_schedule_index.insert(trace);
       }
 
+      ilog("change_schedule_index length: ${to}", ("to", change_schedule_index.size()));
+
       for (auto iter = change_schedule_index.begin(); iter !=change_schedule_index.end(); ++iter) {
          if (iter->status == 0 && iter->bs.size() <= 12 * 16) {
             change_schedule_index.modify(iter, [=](auto &entry) {

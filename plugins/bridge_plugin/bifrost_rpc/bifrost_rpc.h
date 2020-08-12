@@ -30,14 +30,8 @@ extern "C" {
 #endif
 
 // bifrost rpc api
-eosio::rpc_result *save_producer_schedule(
-   const char                                   *url,
-   const char                                   *signer,
-   const eosio::producer_authority_schedule_ffi *schedule
-);
-
 eosio::rpc_result *change_schedule(
-   const char                                   *url,
+   const char                                   *urls,
    const char                                   *signer,
    const eosio::digest_type                     legacy_schedule_hash,
    const eosio::producer_authority_schedule_ffi *schedule,
@@ -49,7 +43,7 @@ eosio::rpc_result *change_schedule(
 );
 
 eosio::rpc_result *prove_action(
-   const char                                   *url,
+   const char                                   *urls,
    const char                                   *signer,
    const eosio::action_ffi                      *act_ffi,
    const eosio::incremental_merkle_ffi          *imcre_merkle,

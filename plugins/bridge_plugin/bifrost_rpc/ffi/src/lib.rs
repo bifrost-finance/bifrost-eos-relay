@@ -26,8 +26,6 @@ use std::{
 mod ffi_types;
 use ffi_types::*;
 mod rpc_calls;
-// this module will be removed in the future
-mod submit_producers_schedule;
 
 #[derive(Clone, Debug)]
 pub enum Error {
@@ -66,68 +64,8 @@ impl std::error::Error for Error {
 }
 
 #[no_mangle]
-pub extern "C" fn save_producer_schedule(
-    url:                  *const c_char,
-    signer:               *const c_char,
-    schedule:             *const ProducerAuthorityScheduleFFI
-) -> Box<RpcResponse> {
-    // check pointers null or not
-    match (url.is_null(), signer.is_null(), schedule.is_null()) {
-        (false, false, false) => (),
-        _ => {
-            return generate_raw_result(false, "cannot send action to bifrost node to prove it due to there're null points");
-        }
-    }
-
-    let url = {
-        let url = char_to_string(url);
-        if url.is_err() {
-            return generate_raw_result(false, "This is not an valid bifrost node address.");
-        }
-        url.unwrap()
-    };
-
-    let signer = {
-        let signer = char_to_string(signer);
-        if signer.is_err() {
-            return generate_raw_result(false, "This is not an valid bifrost node address.");
-        }
-        signer.unwrap()
-    };
-
-    let new_schedule = {
-        let schedule_ffi = &unsafe { ptr::read(schedule) };
-        let new_schedule: Result<ProducerAuthoritySchedule, _> = schedule_ffi.try_into();
-        if new_schedule.is_err() {
-            return generate_raw_result(false, new_schedule.unwrap_err().to_string());
-        }
-        new_schedule.unwrap()
-    };
-
-    let result = futures::executor::block_on(async move {
-        crate::submit_producers_schedule::save_producer_schedule_call(
-            url,
-            signer,
-            new_schedule,
-        ).await
-    });
-
-    // send and watch extrinsic until finalized
-    match result {
-        Ok(tx_hash) => {
-            println!("[+] Transaction got finalized. Hash: {:?}\n", tx_hash);
-            generate_raw_result(true, tx_hash.to_string())
-        }
-        Err(e) => {
-            println!("[+] Transaction got failure due to: {:?}\n", e);
-            generate_raw_result(false, e.to_string())
-        }
-    }
-}
-
-#[no_mangle]
 pub extern "C" fn change_schedule(
-    url:                  *const c_char,
+    urls:                 *const c_char,
     signer:               *const c_char,
     legacy_schedule_hash: Checksum256,
     schedule:             *const ProducerAuthorityScheduleFFI,
@@ -138,19 +76,20 @@ pub extern "C" fn change_schedule(
     ids_list_size:        size_t
 ) -> Box<RpcResponse> {
     // check pointers null or not
-    match (url.is_null(), signer.is_null(), schedule.is_null(), imcre_merkle.is_null(), blocks_ffi.is_null(), ids_list.is_null()) {
+    match (urls.is_null(), signer.is_null(), schedule.is_null(), imcre_merkle.is_null(), blocks_ffi.is_null(), ids_list.is_null()) {
         (false, false, false, false, false, false) => (),
         _ => {
             return generate_raw_result(false, "cannot send action to bifrost node to prove it due to there're null points");
         }
     }
 
-    let url = {
-        let url = char_to_string(url);
-        if url.is_err() {
+    let urls = {
+        let urls = char_to_string(urls);
+        if urls.is_err() {
             return generate_raw_result(false, "This is not an valid bifrost node address.");
         }
-        url.unwrap()
+
+        vec![urls.unwrap()]
     };
 
     let signer = {
@@ -206,7 +145,7 @@ pub extern "C" fn change_schedule(
 
     let result = futures::executor::block_on(async move {
         crate::rpc_calls::change_schedule_call(
-            url,
+            urls,
             signer,
             legacy_schedule_hash,
             new_schedule,
@@ -231,7 +170,7 @@ pub extern "C" fn change_schedule(
 
 #[no_mangle]
 pub extern "C" fn prove_action(
-    url:                 *const c_char,
+    urls:                *const c_char,
     signer:              *const c_char,
     act_ffi:             *const ActionFFI,
     imcre_merkle:        *const IncrementalMerkleFFI,
@@ -244,7 +183,7 @@ pub extern "C" fn prove_action(
     trx_id:              Checksum256
 ) -> Box<RpcResponse> {
     match (
-        url.is_null(), signer.is_null(), act_ffi.is_null(), imcre_merkle.is_null(),
+        urls.is_null(), signer.is_null(), act_ffi.is_null(), imcre_merkle.is_null(),
         act_receipt.is_null(), action_merkle_paths.is_null(), blocks_ffi.is_null(), ids_list.is_null()
     ) {
         (false, false, false, false, false, false, false, false) => (),
@@ -314,12 +253,12 @@ pub extern "C" fn prove_action(
         ids_lists.push(r.unwrap());
     }
 
-    let url = {
-        let url = char_to_string(url);
-        if url.is_err() {
+    let urls = {
+        let urls = char_to_string(urls);
+        if urls.is_err() {
             return generate_raw_result(false, "This is not an valid bifrost node address.");
         }
-        url.unwrap()
+        vec![urls.unwrap()]
     };
 
     let signer = {
@@ -332,7 +271,7 @@ pub extern "C" fn prove_action(
 
     let result = futures::executor::block_on(async move {
         crate::rpc_calls::prove_action_call(
-            url,
+            urls,
             signer,
             action,
             action_receipt,
