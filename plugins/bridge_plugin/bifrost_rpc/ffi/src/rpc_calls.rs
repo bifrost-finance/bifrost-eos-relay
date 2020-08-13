@@ -22,6 +22,7 @@ use once_cell::sync::OnceCell; // sync::OnceCell is thread-safe
 use subxt::{PairSigner, DefaultNodeRuntime as BifrostRuntime, Call, Client, system::{AccountStoreExt, System, SystemEventsDecoder}};
 use sp_core::{sr25519::Pair, Pair as TraitPair};
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU32, Ordering};
 
 static BIFROST_RPC_CLIENT: Lazy<Arc<Mutex<subxt::ClientBuilder<BifrostRuntime>>>> = {
 	Lazy::new(move || {
@@ -74,11 +75,6 @@ pub async fn change_schedule_call(
 	block_headers:        Vec<SignedBlockHeader>,
 	block_ids_list:       Vec<Vec<Checksum256>>
 ) -> Result<String, crate::Error> {
-//	let client: Client<BifrostRuntime> = subxt::ClientBuilder::new()
-//		.set_url(url.as_ref())
-//		.build()
-//		.await
-//		.map_err(|_| crate::Error::SubxtError("failed to create subxt client"))?;
 	let mut client = get_available_bifrost_client(urls).await?.lock().map_err(|_| crate::Error::SubxtError("failed to create subxt client"))?;
 
 	let signer = Pair::from_string(signer.as_ref(), None).map_err(|_| crate::Error::WrongSudoSeed)?;
@@ -92,8 +88,7 @@ pub async fn change_schedule_call(
 		block_ids_list,
 		_runtime: PhantomData
 	};
-	let extrinsic = client.watch(args, &signer).await.map_err(|_| crate::Error::SubxtError("failed to commit this transaction"))?;
-	let block_hash = extrinsic.block;
+	let block_hash = client.submit(args, &signer).await.map_err(|_| crate::Error::SubxtError("failed to commit this transaction"))?;
 
 	Ok(block_hash.to_string())
 }
@@ -109,13 +104,6 @@ pub async fn prove_action_call(
 	block_ids_list:      Vec<Vec<Checksum256>>,
 	trx_id:              Checksum256
 ) -> Result<String, crate::Error> {
-//	let client: Client<BifrostRuntime> = subxt::ClientBuilder::new()
-//		.set_url(url.as_ref())
-//		.build()
-//		.await
-//		.map_err(|_| crate::Error::SubxtError("failed to create subxt client"))?;
-//	let mut client = global_client(url.as_ref()).await?.lock()
-//						.map_err(|_| crate::Error::SubxtError("failed to get client builder"))?;
 	let mut client = get_available_bifrost_client(urls).await?.lock().map_err(|_| crate::Error::SubxtError("failed to create subxt client"))?;
 
 	let signer = Pair::from_string(signer.as_ref(), None).map_err(|_| crate::Error::WrongSudoSeed)?;
@@ -123,9 +111,16 @@ pub async fn prove_action_call(
 
 	// set nonce to avoid multiple trades using the same nonce, that will cause some trades will be abandoned.
 	// https://substrate.dev/docs/en/knowledgebase/learn-substrate/tx-pool
+//	let current_nonce = client.account(&signer.signer().public().into(), None).await.map_err(|_| crate::Error::WrongSudoSeed)?.nonce;
+//	println!("signer current nonce is: {:?}", current_nonce);
+//	signer.increment_nonce();
+
+	static atomic_nonce: AtomicU32 = AtomicU32::new(0);
 	let current_nonce = client.account(&signer.signer().public().into(), None).await.map_err(|_| crate::Error::WrongSudoSeed)?.nonce;
 	println!("signer current nonce is: {:?}", current_nonce);
-	signer.increment_nonce();
+	let next_nonce = get_latest_nonce(&atomic_nonce, current_nonce);
+	println!("signer next nonce is: {:?}", next_nonce);
+	signer.set_nonce(next_nonce);
 
 	let call = ProveActionCall::<BifrostRuntime> {
 		action,
@@ -138,6 +133,9 @@ pub async fn prove_action_call(
 		_runtime: PhantomData
 	};
 	let block_hash = client.submit(call, &signer).await.map_err(|_| crate::Error::SubxtError("failed to commit this transaction"))?;
+
+	// if trade success, change nonce
+	atomic_update_nonce(&atomic_nonce, current_nonce);
 
 	Ok(block_hash.to_string())
 }
@@ -153,4 +151,21 @@ async fn get_available_bifrost_client(urls: impl IntoIterator<Item=String>)
 	}
 
 	Err(crate::Error::SubxtError("failed to get client builder"))
+}
+
+// update nonce to avoid using the same nonce
+pub fn get_latest_nonce(atomic_nonce: &AtomicU32, current_nonce: u32) -> u32 {
+	if atomic_nonce.load(Ordering::Relaxed) < current_nonce {
+		current_nonce
+	} else {
+		atomic_nonce.load(Ordering::Relaxed) + 1
+	}
+}
+
+pub fn atomic_update_nonce(atomic_nonce: &AtomicU32, current_nonce: u32) {
+	if atomic_nonce.load(Ordering::Relaxed) < current_nonce {
+		atomic_nonce.swap(current_nonce, Ordering::Relaxed);
+	} else {
+		atomic_nonce.fetch_add(1, Ordering::SeqCst);
+	}
 }

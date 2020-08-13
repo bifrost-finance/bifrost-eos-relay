@@ -158,7 +158,7 @@ pub extern "C" fn change_schedule(
     // send and watch extrinsic until finalized
     match result {
         Ok(tx_hash) => {
-            println!("[+] Transaction got finalized. Hash: {:?}\n", tx_hash);
+            println!("[+] Transaction got finalized and its id: {:?}\n", tx_hash);
             generate_raw_result(true, tx_hash.to_string())
         }
         Err(e) => {
@@ -286,7 +286,7 @@ pub extern "C" fn prove_action(
     // send and watch extrinsic until finalized
     match result {
         Ok(tx_hash) => {
-            println!("[+] Transaction got finalized. Hash: {:?}\n", tx_hash);
+            println!("[+] Transaction got finalized and its id: {:?}\n", tx_hash);
             generate_raw_result(true, tx_hash.to_string())
         }
         Err(e) => {
