@@ -339,6 +339,7 @@ namespace eosio {
       });
    }
 
+   // listen and retrieve block headers, collecting block headers for verifying
    void bridge_plugin_impl::irreversible_block(const chain::block_state_ptr &block) {
       // flush buffer
       uint64_t block_index_max_size = 10240;
@@ -350,7 +351,6 @@ namespace eosio {
          change_schedule_index.erase(change_schedule_index.begin());
       }
 
-      // ilog("irreversible_block: ${n}, id: ${id}, action_mroot: ${root}", ("n", block->block_num)("id", block->id)("root", block->header.action_mroot));
       auto bb = bridge_blocks{block->id, *block};
       if (block_index.size() >= block_index_max_size) {
          block_index.erase(block_index.begin());
@@ -418,6 +418,7 @@ namespace eosio {
       }
    }
 
+   // Listen a transaction from or to contract user or
    void bridge_plugin_impl::filter_action(
       const std::string &contract,
       const std::vector<action_trace> &action_traces,
@@ -444,6 +445,7 @@ namespace eosio {
             ilog("action_transfer: ${to}", ("to", der_act));
             ilog("action traces from: ${to}", ("to", action_traces[i]));
 
+            // filter a transaction by contract user, example bifrostcross is a contract user.
             if (der_act.from == name(contract)) {
                // Bifrost => EOS, do need to transaction id, and it depends.
                // 1. redeem assets by Bifrost offchain worker, trigger from bifrost

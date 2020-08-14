@@ -75,7 +75,12 @@ pub async fn change_schedule_call(
 	block_headers:        Vec<SignedBlockHeader>,
 	block_ids_list:       Vec<Vec<Checksum256>>
 ) -> Result<String, crate::Error> {
-	let mut client = get_available_bifrost_client(urls).await?.lock().map_err(|_| crate::Error::SubxtError("failed to create subxt client"))?;
+	let url: String = urls.into_iter().take(1).next().ok_or(crate::Error::SubxtError("failed to create subxt client"))?;
+	let client: Client<BifrostRuntime> = subxt::ClientBuilder::new()
+		.set_url(url)
+		.build()
+		.await
+		.map_err(|_| crate::Error::SubxtError("failed to create subxt client"))?;
 
 	let signer = Pair::from_string(signer.as_ref(), None).map_err(|_| crate::Error::WrongSudoSeed)?;
 	let signer = PairSigner::<BifrostRuntime, Pair>::new(signer);
@@ -104,17 +109,18 @@ pub async fn prove_action_call(
 	block_ids_list:      Vec<Vec<Checksum256>>,
 	trx_id:              Checksum256
 ) -> Result<String, crate::Error> {
-	let mut client = get_available_bifrost_client(urls).await?.lock().map_err(|_| crate::Error::SubxtError("failed to create subxt client"))?;
+	let url: String = urls.into_iter().take(1).next().ok_or(crate::Error::SubxtError("failed to create subxt client"))?;
+	let client: Client<BifrostRuntime> = subxt::ClientBuilder::new()
+		.set_url(url)
+		.build()
+		.await
+		.map_err(|_| crate::Error::SubxtError("failed to create subxt client"))?;
 
 	let signer = Pair::from_string(signer.as_ref(), None).map_err(|_| crate::Error::WrongSudoSeed)?;
 	let mut signer = PairSigner::<BifrostRuntime, Pair>::new(signer);
 
 	// set nonce to avoid multiple trades using the same nonce, that will cause some trades will be abandoned.
 	// https://substrate.dev/docs/en/knowledgebase/learn-substrate/tx-pool
-//	let current_nonce = client.account(&signer.signer().public().into(), None).await.map_err(|_| crate::Error::WrongSudoSeed)?.nonce;
-//	println!("signer current nonce is: {:?}", current_nonce);
-//	signer.increment_nonce();
-
 	static atomic_nonce: AtomicU32 = AtomicU32::new(0);
 	let current_nonce = client.account(&signer.signer().public().into(), None).await.map_err(|_| crate::Error::WrongSudoSeed)?.nonce;
 	println!("signer current nonce is: {:?}", current_nonce);
