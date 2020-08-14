@@ -17,7 +17,7 @@ RUN apt install wget -y && wget https://dl.bintray.com/boostorg/release/1.70.0/s
 	&& tar -xvf boost_1_70_0.tar.bz2 && cd boost_1_70_0 && \
 	./bootstrap.sh --prefix=/usr/local && ./b2 && ./b2 install
 
-RUN cd bifrost-eos-relay && git tag v2.0.4 -m 'fix no tag' && c && \
+RUN cd bifrost-eos-relay && git tag v2.0.4 -m 'fix no tag' && mkdir build && cd build && \
 	cmake -DCMAKE_BUILD_TYPE=Release -DCORE_SYMBOL_NAME=$symbol .. \
 	&& export PATH="$PATH:$HOME/.cargo/bin" && make -j4
 
