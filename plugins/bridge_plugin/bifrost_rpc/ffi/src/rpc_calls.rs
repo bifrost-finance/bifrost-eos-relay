@@ -16,7 +16,7 @@
 
 use codec::Encode;
 use core::marker::PhantomData;
-use eos_chain::{Action, ActionReceipt, Checksum256, IncrementalMerkle, ProducerAuthoritySchedule, SignedBlockHeader};
+use eos_chain::{Action, ActionReceipt, Checksum256, Digest, IncrementalMerkle, ProducerAuthoritySchedule, SignedBlockHeader};
 use once_cell::sync::Lazy; // sync::OnceCell is thread-safe
 use once_cell::sync::OnceCell; // sync::OnceCell is thread-safe
 use subxt::{PairSigner, DefaultNodeRuntime as BifrostRuntime, Call, Client, system::{AccountStoreExt, System, SystemEventsDecoder}};
@@ -124,9 +124,13 @@ pub async fn prove_action_call(
 	static atomic_nonce: AtomicU32 = AtomicU32::new(0);
 	let current_nonce = client.account(&signer.signer().public().into(), None).await.map_err(|_| crate::Error::WrongSudoSeed)?.nonce;
 	println!("signer current nonce is: {:?}", current_nonce);
-	let next_nonce = get_latest_nonce(&atomic_nonce, current_nonce);
-	println!("signer next nonce is: {:?}", next_nonce);
-	signer.set_nonce(next_nonce);
+//	let next_nonce = get_latest_nonce(&atomic_nonce, current_nonce);
+	println!("signer next nonce is: {:?}", atomic_nonce);
+	if atomic_nonce.load(Ordering::Relaxed) <= current_nonce {
+		atomic_nonce.swap(current_nonce, Ordering::Relaxed);
+	}
+	println!("this trade's action hash: {:?}", action_receipt.digest().unwrap().to_string());
+	signer.set_nonce(atomic_nonce.load(Ordering::Relaxed));
 
 	let call = ProveActionCall::<BifrostRuntime> {
 		action,
@@ -141,7 +145,8 @@ pub async fn prove_action_call(
 	let block_hash = client.submit(call, &signer).await.map_err(|_| crate::Error::SubxtError("failed to commit this transaction"))?;
 
 	// if trade success, change nonce
-	atomic_update_nonce(&atomic_nonce, current_nonce);
+//	atomic_update_nonce(&atomic_nonce, current_nonce);
+	atomic_nonce.fetch_add(1, Ordering::SeqCst);
 
 	Ok(block_hash.to_string())
 }

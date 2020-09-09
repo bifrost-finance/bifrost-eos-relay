@@ -294,7 +294,7 @@ namespace eosio {
                act_receipts_digs.push_back(dig);
             }
             if (j < 0) {
-               ilog("This is an invalid transaction due to wrong action receipt");
+               ilog("This is an invalid transaction due to wrong action receipt: ${act}", ("act", ti->act));
                continue;
             }
             auto paths = get_proof(j, act_receipts_digs);
@@ -374,6 +374,8 @@ namespace eosio {
                ilog("collected blocks for proving action: ${to}", ("to", block->block_num));
                entry.status = 1; // full
             });
+            // trigger cross trade
+            // prove_action_timer_tick();
          }
       }
 
