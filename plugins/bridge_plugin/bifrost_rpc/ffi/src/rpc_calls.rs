@@ -122,15 +122,48 @@ pub async fn prove_action_call(
 	// set nonce to avoid multiple trades using the same nonce, that will cause some trades will be abandoned.
 	// https://substrate.dev/docs/en/knowledgebase/learn-substrate/tx-pool
 	static atomic_nonce: AtomicU32 = AtomicU32::new(0);
+	static signer_current_nonce: AtomicU32 = AtomicU32::new(0);
+//	static mut latest_nonce: u32 = 0;
 	let current_nonce = client.account(&signer.signer().public().into(), None).await.map_err(|_| crate::Error::WrongSudoSeed)?.nonce;
-	println!("signer current nonce is: {:?}", current_nonce);
-//	let next_nonce = get_latest_nonce(&atomic_nonce, current_nonce);
-	println!("signer next nonce is: {:?}", atomic_nonce);
-	if atomic_nonce.load(Ordering::Relaxed) <= current_nonce {
-		atomic_nonce.swap(current_nonce, Ordering::Relaxed);
+	// initialize signer current nonce
+//	if signer_current_nonce.load(Ordering::Relaxed) == 0 {
+//		signer_current_nonce.swap(current_nonce, Ordering::Relaxed);
+//	}
+
+	// ensure atomic nonce is bigger than current user nonce
+//	if atomic_nonce.load(Ordering::Relaxed) <= current_nonce {
+//		atomic_nonce.swap(current_nonce, Ordering::Relaxed);
+//	}
+//
+//	// this means signer nonce has changed.
+//	if signer_current_nonce.load(Ordering::Relaxed) < current_nonce {
+//		signer_current_nonce.swap(current_nonce, Ordering::Relaxed);
+//	}
+
+	let gap = signer_current_nonce.load(Ordering::Relaxed) as i32 - current_nonce as i32;
+	match gap {
+		gap if gap == 0 => {
+			// no change on nonce
+//			atomic_nonce.fetch_add(1, Ordering::SeqCst); // increment 1
+			signer.set_nonce(atomic_nonce.load(Ordering::Relaxed) + 1 + current_nonce);
+		}
+		gap if gap > 0 => {
+			// maybe it's unlikely to happen
+			();
+		}
+		gap if gap < 0 => {
+			// nonce has changed
+			signer.set_nonce(current_nonce);
+//			signer_current_nonce.swap(current_nonce, Ordering::Relaxed);
+//			atomic_nonce.swap(0, Ordering::Relaxed);
+		}
+		_ => (),
 	}
+
+	println!("signer current nonce is: {:?}", current_nonce);
+	println!("signer next nonce is: {:?}", atomic_nonce);
 	println!("this trade's action hash: {:?}", action_receipt.digest().unwrap().to_string());
-	signer.set_nonce(atomic_nonce.load(Ordering::Relaxed));
+//	signer.set_nonce(atomic_nonce.load(Ordering::Relaxed));
 
 	let call = ProveActionCall::<BifrostRuntime> {
 		action,
@@ -142,11 +175,31 @@ pub async fn prove_action_call(
 		trx_id,
 		_runtime: PhantomData
 	};
-	let block_hash = client.submit(call, &signer).await.map_err(|_| crate::Error::SubxtError("failed to commit this transaction"))?;
+	let block_hash = client.submit(call, &signer).await.map_err(|e| {
+		println!("the real reason is: {:?}", e);
+		crate::Error::SubxtError("failed to commit this transaction")
+	})?;
+
+	match gap {
+		gap if gap == 0 => {
+			// no change on nonce
+			atomic_nonce.fetch_add(1, Ordering::SeqCst); // increment 1
+		}
+		gap if gap > 0 => {
+			// maybe it's unlikely to happen
+			();
+		}
+		gap if gap < 0 => {
+			// nonce has changed
+			signer_current_nonce.swap(current_nonce, Ordering::Relaxed);
+			atomic_nonce.swap(0, Ordering::Relaxed);
+		}
+		_ => (),
+	}
 
 	// if trade success, change nonce
 //	atomic_update_nonce(&atomic_nonce, current_nonce);
-	atomic_nonce.fetch_add(1, Ordering::SeqCst);
+//	atomic_nonce.fetch_add(1, Ordering::SeqCst);
 
 	Ok(block_hash.to_string())
 }

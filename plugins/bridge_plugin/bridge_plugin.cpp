@@ -8,6 +8,7 @@
 #include <fstream>
 #include <fc/log/logger_config.hpp>
 #include <fc/io/json.hpp>
+#include <mutex>
 
 #include "bifrost_rpc.h"
 #include <eosio/bridge_plugin/bridge_plugin.hpp>
@@ -21,6 +22,7 @@ namespace eosio {
 
    struct by_status;
    digest_type digest(const action &act) { return digest_type::hash(act); }
+   std::mutex mtx;
 
    typedef multi_index_container<
            bridge_blocks,
@@ -261,8 +263,12 @@ namespace eosio {
    void bridge_plugin_impl::prove_action_timer_tick() {
       prove_action_timer->expires_from_now(prove_action_timeout);
       prove_action_timer->async_wait([&](boost::system::error_code ec) {
+         ilog("How many transaction we have now: ${act}", ("act", prove_action_index.size()));
          for (auto ti = prove_action_index.begin(); ti != prove_action_index.end(); ++ti) {
             if (ti->status != 1) continue;
+
+            // lock now
+//            mtx.lock();
 
             auto tuple = collect_incremental_merkle_and_blocks(ti);
             incremental_merkle blockroot_merkle = ti->imcre_merkle;
@@ -295,6 +301,7 @@ namespace eosio {
             }
             if (j < 0) {
                ilog("This is an invalid transaction due to wrong action receipt: ${act}", ("act", ti->act));
+               ilog("all receipts: ${to}", ("to", ti->act_receipts));
                continue;
             }
             auto paths = get_proof(j, act_receipts_digs);
@@ -335,6 +342,9 @@ namespace eosio {
             delete []blocks_ffi;
          }
 
+         // unlock it
+//         mtx.unlock();
+
          prove_action_timer_tick();
       });
    }
@@ -351,7 +361,7 @@ namespace eosio {
          change_schedule_index.erase(change_schedule_index.begin());
       }
 
-      auto bb = bridge_blocks{block->id, *block};
+      auto bb = bridge_blocks{ block->id, *block };
       if (block_index.size() >= block_index_max_size) {
          block_index.erase(block_index.begin());
       }
@@ -471,6 +481,8 @@ namespace eosio {
       }
 
       if (index < 0) return;
+
+      ilog("all receipts: ${to}", ("to", receipts));
 
       auto receipt = action_traces[index].receipt;
       auto receipt_dig = receipt->digest(); // this can be unique as index

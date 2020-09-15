@@ -1509,6 +1509,7 @@ struct controller_impl {
 
          emit( self.accepted_transaction, trx );
          emit( self.applied_transaction, std::tie(trace, trn) );
+         emit(self.apply_action_receipt, std::tie(trace, pending->_block_stage.get<building_block>()._actions));
 
          return trace;
       } FC_CAPTURE_AND_RETHROW((trace))
