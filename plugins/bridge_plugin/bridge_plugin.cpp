@@ -302,6 +302,10 @@ namespace eosio {
             if (j < 0) {
                ilog("This is an invalid transaction due to wrong action receipt: ${act}", ("act", ti->act));
                ilog("all receipts: ${to}", ("to", ti->act_receipts));
+               ilog("all receipts hash: ${to}", ("to", ti->act_receipt_digest));
+               ilog("act_receipt_digest: ${to}", ("to", ti->act_receipt_digest));
+               ilog("imcre_merkle: ${to}", ("to", ti->imcre_merkle));
+               ilog("receipt: ${to}", ("to", ti->receipt));
                continue;
             }
             auto paths = get_proof(j, act_receipts_digs);
@@ -310,6 +314,19 @@ namespace eosio {
             block_id_type_list *ids_list = new block_id_type_list[block_id_lists.size()];
             for (size_t i = 0; i < block_id_lists.size(); ++i) {
                ids_list[i] = convert_ffi(block_id_lists[i]);
+            }
+
+            if (blockroot_merkle._node_count == 36143281) {
+               ilog("block headers: ${to}", ("to", block_headers));
+               ilog("block act: ${to}", ("to", ti->act));
+               ilog("receipt: ${to}", ("to", ti->receipt));
+               ilog("block act_receipts: ${to}", ("to", ti->act_receipts));
+               ilog("block block_num: ${to}", ("to", ti->block_num));
+               ilog("block act_receipt_digest: ${to}", ("to", ti->act_receipt_digest));
+               ilog("block blockroot_merkle: ${to}", ("to", blockroot_merkle));
+               ilog("block merkle_paths: ${to}", ("to", paths));
+               ilog("block act_receipts_digs: ${to}", ("to", act_receipts_digs));
+               ilog("block j: ${to}", ("to", j));
             }
 
             rpc_result *result = prove_action(
@@ -440,6 +457,8 @@ namespace eosio {
       int index = -1;
       transaction_id_type current_trx_id = transaction_id_type();
 
+      static int times = 0;
+
       for (size_t i = 0; i < action_traces.size(); ++i) {
          // in case action traces has errors
          if (action_traces[i].except) {
@@ -448,6 +467,7 @@ namespace eosio {
          }
 
          auto act = action_traces[i].act;
+         auto act_dig = digest(act);
          auto receiver = action_traces[i].receiver;
          if (act.account == name("eosio.token") && act.name == name("transfer") && receiver == name("eosio.token")) {
             action_transfer der_act;
@@ -470,22 +490,28 @@ namespace eosio {
                current_trx_id = transaction_id_type();
             }
 
-            // deposit operation mean asset will be bridged to bifrost, it needs to verify action.
-            // but withdraw operation, do not need to verify action.
-            // if (der_act.from == name(contract)) return; // withdraw operation, do not need to verify action
+            if (der_act.to != name(contract) && der_act.from != name(contract)) return;
+
             if (!action_traces[i].receipt) return;
+            int k = -1;
             if (der_act.from == name(contract) || der_act.to == name(contract)) {
                index = action_traces[i].action_ordinal;
+               k = action_traces[i].action_ordinal;
             }
+//            if (act_dig == action_traces[i].receipt->act_digest) index = i;
          }
       }
 
       if (index < 0) return;
 
-      ilog("all receipts: ${to}", ("to", receipts));
+      times += 1;
+      ilog("Times of cross trade: ${to}", ("to", times));
 
       auto receipt = action_traces[index].receipt;
       auto receipt_dig = receipt->digest(); // this can be unique as index
+      ilog("receipt_dig: ${to}", ("to", receipt_dig));
+      ilog("index: ${to}", ("to", index));
+      ilog("receipts: ${to}", ("to", receipts));
 
       auto bt = bridge_prove_action {
          action_traces[index].block_num,
@@ -501,13 +527,13 @@ namespace eosio {
       prove_action_index.insert(bt);
 
       // replace the latest action receipts while more than one action in a single block
-      for (auto ti = prove_action_index.begin(); ti != prove_action_index.end(); ++ti) {
-         if (ti->block_num == bt.block_num) {
-            prove_action_index.modify(ti, [=](auto &entry) {
-               entry.act_receipts = receipts;
-            });
-         }
-      }
+//      for (auto ti = prove_action_index.begin(); ti != prove_action_index.end(); ++ti) {
+//         if (ti->block_num == bt.block_num) {
+//            prove_action_index.modify(ti, [=](auto &entry) {
+//               entry.act_receipts = receipts;
+//            });
+//         }
+//      }
    }
 
    void bridge_plugin_impl::apply_action_receipt(std::tuple<const transaction_trace_ptr&, const std::vector<action_receipt>&> t) {
