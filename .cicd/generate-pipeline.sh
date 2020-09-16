@@ -3,16 +3,11 @@ set -eo pipefail
 # environment
 . ./.cicd/helpers/general.sh
 export MOJAVE_ANKA_TAG_BASE=${MOJAVE_ANKA_TAG_BASE:-'clean::cicd::git-ssh::nas::brew::buildkite-agent'}
-export MOJAVE_ANKA_TEMPLATE_NAME=${MOJAVE_ANKA_TEMPLATE_NAME:-'10.14.6_6C_14G_40G'}
+export MOJAVE_ANKA_TEMPLATE_NAME=${MOJAVE_ANKA_TEMPLATE_NAME:-'10.14.6_6C_14G_80G'}
 export PLATFORMS_JSON_ARRAY='[]'
 BUILDKITE_BUILD_AGENT_QUEUE='automation-eks-eos-builder-fleet'
 BUILDKITE_TEST_AGENT_QUEUE='automation-eks-eos-tester-fleet'
 [[ -z "$ROUNDS" ]] && export ROUNDS='1'
-LINUX_CONCURRENCY='8'
-MAC_CONCURRENCY='2'
-LINUX_CONCURRENCY_GROUP='eos-scheduled-build'
-MAC_CONCURRENCY_GROUP='eos-scheduled-build-mac'
-
 # Determine if it's a forked PR and make sure to add git fetch so we don't have to git clone the forked repo's url
 if [[ $BUILDKITE_BRANCH =~ ^pull/[0-9]+/head: ]]; then
   PR_ID=$(echo $BUILDKITE_BRANCH | cut -d/ -f2)
@@ -80,8 +75,14 @@ if [[ ! -z ${BUILDKITE_TRIGGERED_FROM_BUILD_ID} ]]; then
 fi
 export BUILD_SOURCE=${BUILD_SOURCE:---build \$BUILDKITE_BUILD_ID}
 # set trigger_job if master/release/develop branch and webhook
-if [[ ! $BUILDKITE_PIPELINE_SLUG =~ 'lrt' ]] && [[ $BUILDKITE_BRANCH =~ ^release/[0-9]+\.[0-9]+\.x$ || $BUILDKITE_BRANCH =~ ^master$ || $BUILDKITE_BRANCH =~ ^develop$ ]]; then
+if [[ ! $BUILDKITE_PIPELINE_SLUG =~ 'lrt' ]] && [[ $BUILDKITE_BRANCH =~ ^release/[0-9]+\.[0-9]+\.x$ || $BUILDKITE_BRANCH =~ ^master$ || $BUILDKITE_BRANCH =~ ^develop$ || "$SKIP_LONG_RUNNING_TESTS" == 'false' ]]; then
     [[ $BUILDKITE_SOURCE != 'schedule' ]] && export TRIGGER_JOB=true
+fi
+# run LRTs synchronously when running full test suite
+if [[ "$RUN_ALL_TESTS" == 'true' && "$SKIP_LONG_RUNNING_TESTS" != 'true' ]]; then
+    export BUILD_SOURCE="--build \$BUILDKITE_BUILD_ID"
+    export SKIP_LONG_RUNNING_TESTS='false'
+    export TRIGGER_JOB='false'
 fi
 oIFS="$IFS"
 IFS=$''
@@ -93,8 +94,6 @@ echo ''
 echo '    # builds'
 echo $PLATFORMS_JSON_ARRAY | jq -cr '.[]' | while read -r PLATFORM_JSON; do
     if [[ ! "$(echo "$PLATFORM_JSON" | jq -r .FILE_NAME)" =~ 'macos' ]]; then
-        CONCURRENCY=$LINUX_CONCURRENCY
-        CONCURRENCY_GROUP=$LINUX_CONCURRENCY_GROUP
         cat <<EOF
   - label: "$(echo "$PLATFORM_JSON" | jq -r .ICON) $(echo "$PLATFORM_JSON" | jq -r .PLATFORM_NAME_FULL) - Build"
     command:
@@ -110,8 +109,6 @@ echo $PLATFORMS_JSON_ARRAY | jq -cr '.[]' | while read -r PLATFORM_JSON; do
 
 EOF
     else
-        CONCURRENCY=$MAC_CONCURRENCY
-        CONCURRENCY_GROUP=$MAC_CONCURRENCY_GROUP
         cat <<EOF
   - label: "$(echo "$PLATFORM_JSON" | jq -r .ICON) $(echo "$PLATFORM_JSON" | jq -r .PLATFORM_NAME_FULL) - Build"
     command:
@@ -119,7 +116,7 @@ EOF
       - "cd eos && ./.cicd/build.sh"
       - "cd eos && tar -pczf build.tar.gz build && buildkite-agent artifact upload build.tar.gz"
     plugins:
-      - EOSIO/anka#v0.5.7:
+      - EOSIO/anka#v0.6.1:
           no-volume: true
           inherit-environment-vars: true
           vm-name: ${MOJAVE_ANKA_TEMPLATE_NAME}
@@ -132,9 +129,10 @@ EOF
           failover-registries:
             - 'registry_1'
             - 'registry_2'
-          pre-execute-ping-sleep: "8.8.8.8"
           pre-commands: 
             - "git clone git@github.com:EOSIO/mac-anka-fleet.git && cd mac-anka-fleet && . ./ensure-tag.bash -u 12 -r 25G -a '-n'"
+      - EOSIO/skip-checkout#v0.1.1:
+          cd: ~
     env:
       REPO: ${BUILDKITE_PULL_REQUEST_REPO:-$BUILDKITE_REPO}
       REPO_COMMIT: $BUILDKITE_COMMIT
@@ -147,12 +145,6 @@ EOF
     timeout: ${TIMEOUT:-180}
     agents: "queue=mac-anka-large-node-fleet"
     skip: \${SKIP_$(echo "$PLATFORM_JSON" | jq -r .PLATFORM_NAME_UPCASE)_$(echo "$PLATFORM_JSON" | jq -r .VERSION_MAJOR)$(echo "$PLATFORM_JSON" | jq -r .VERSION_MINOR)}${SKIP_BUILD}
-EOF
-    fi
-    if [ "$BUILDKITE_SOURCE" = "schedule" ]; then
-        cat <<EOF
-    concurrency: ${CONCURRENCY}
-    concurrency_group: ${CONCURRENCY_GROUP}
 EOF
     fi
 done
@@ -180,8 +172,6 @@ for ROUND in $(seq 1 $ROUNDS); do
     echo '    # parallel tests'
     echo $PLATFORMS_JSON_ARRAY | jq -cr '.[]' | while read -r PLATFORM_JSON; do
         if [[ ! "$(echo "$PLATFORM_JSON" | jq -r .FILE_NAME)" =~ 'macos' ]]; then
-            CONCURRENCY=$LINUX_CONCURRENCY
-            CONCURRENCY_GROUP=$LINUX_CONCURRENCY_GROUP
             cat <<EOF
   - label: "$(echo "$PLATFORM_JSON" | jq -r .ICON) $(echo "$PLATFORM_JSON" | jq -r .PLATFORM_NAME_FULL) - Unit Tests"
     command:
@@ -200,8 +190,6 @@ for ROUND in $(seq 1 $ROUNDS); do
 
 EOF
         else
-            CONCURRENCY=$MAC_CONCURRENCY
-            CONCURRENCY_GROUP=$MAC_CONCURRENCY_GROUP
             cat <<EOF
   - label: "$(echo "$PLATFORM_JSON" | jq -r .ICON) $(echo "$PLATFORM_JSON" | jq -r .PLATFORM_NAME_FULL) - Unit Tests"
     command:
@@ -209,7 +197,7 @@ EOF
       - "cd eos && buildkite-agent artifact download build.tar.gz . --step '$(echo "$PLATFORM_JSON" | jq -r .ICON) $(echo "$PLATFORM_JSON" | jq -r .PLATFORM_NAME_FULL) - Build' && tar -xzf build.tar.gz"
       - "cd eos && ./.cicd/test.sh scripts/parallel-test.sh"
     plugins:
-      - EOSIO/anka#v0.5.7:
+      - EOSIO/anka#v0.6.1:
           no-volume: true
           inherit-environment-vars: true
           vm-name: ${MOJAVE_ANKA_TEMPLATE_NAME}
@@ -220,7 +208,8 @@ EOF
           failover-registries:
             - 'registry_1'
             - 'registry_2'
-          pre-execute-ping-sleep: "8.8.8.8"
+      - EOSIO/skip-checkout#v0.1.1:
+          cd: ~
     agents: "queue=mac-anka-node-fleet"
     retry:
       manual:
@@ -230,20 +219,12 @@ EOF
 
 EOF
         fi
-        if [ "$BUILDKITE_SOURCE" = "schedule" ]; then
-            cat <<EOF
-    concurrency: ${CONCURRENCY}
-    concurrency_group: ${CONCURRENCY_GROUP}
-EOF
-        fi
     echo
     done
     # wasm spec tests
     echo '    # wasm spec tests'
     echo $PLATFORMS_JSON_ARRAY | jq -cr '.[]' | while read -r PLATFORM_JSON; do
         if [[ ! "$(echo "$PLATFORM_JSON" | jq -r .FILE_NAME)" =~ 'macos' ]]; then
-            CONCURRENCY=$LINUX_CONCURRENCY
-            CONCURRENCY_GROUP=$LINUX_CONCURRENCY_GROUP
             cat <<EOF
   - label: "$(echo "$PLATFORM_JSON" | jq -r .ICON) $(echo "$PLATFORM_JSON" | jq -r .PLATFORM_NAME_FULL) - WASM Spec Tests"
     command:
@@ -262,8 +243,6 @@ EOF
 
 EOF
         else
-            CONCURRENCY=$MAC_CONCURRENCY
-            CONCURRENCY_GROUP=$MAC_CONCURRENCY_GROUP
             cat <<EOF
   - label: "$(echo "$PLATFORM_JSON" | jq -r .ICON) $(echo "$PLATFORM_JSON" | jq -r .PLATFORM_NAME_FULL) - WASM Spec Tests"
     command:
@@ -271,7 +250,7 @@ EOF
       - "cd eos && buildkite-agent artifact download build.tar.gz . --step '$(echo "$PLATFORM_JSON" | jq -r .ICON) $(echo "$PLATFORM_JSON" | jq -r .PLATFORM_NAME_FULL) - Build' && tar -xzf build.tar.gz"
       - "cd eos && ./.cicd/test.sh scripts/wasm-spec-test.sh"
     plugins:
-      - EOSIO/anka#v0.5.7:
+      - EOSIO/anka#v0.6.1:
           no-volume: true
           inherit-environment-vars: true
           vm-name: ${MOJAVE_ANKA_TEMPLATE_NAME}
@@ -282,7 +261,8 @@ EOF
           failover-registries:
             - 'registry_1'
             - 'registry_2'
-          pre-execute-ping-sleep: "8.8.8.8"
+      - EOSIO/skip-checkout#v0.1.1:
+          cd: ~
     agents: "queue=mac-anka-node-fleet"
     retry:
       manual:
@@ -290,12 +270,6 @@ EOF
     timeout: ${TIMEOUT:-60}
     skip: \${SKIP_$(echo "$PLATFORM_JSON" | jq -r .PLATFORM_NAME_UPCASE)_$(echo "$PLATFORM_JSON" | jq -r .VERSION_MAJOR)$(echo "$PLATFORM_JSON" | jq -r .VERSION_MINOR)}${SKIP_WASM_SPEC_TESTS}
 
-EOF
-        fi
-        if [ "$BUILDKITE_SOURCE" = "schedule" ]; then
-            cat <<EOF
-    concurrency: ${CONCURRENCY}
-    concurrency_group: ${CONCURRENCY_GROUP}
 EOF
         fi
     echo
@@ -307,8 +281,6 @@ EOF
         SERIAL_TESTS="$(cat tests/CMakeLists.txt | grep nonparallelizable_tests | grep -v "^#" | awk -F" " '{ print $2 }')"
         for TEST_NAME in $SERIAL_TESTS; do
             if [[ ! "$(echo "$PLATFORM_JSON" | jq -r .FILE_NAME)" =~ 'macos' ]]; then
-                CONCURRENCY=$LINUX_CONCURRENCY
-                CONCURRENCY_GROUP=$LINUX_CONCURRENCY_GROUP
                 cat <<EOF
   - label: "$(echo "$PLATFORM_JSON" | jq -r .ICON) $(echo "$PLATFORM_JSON" | jq -r .PLATFORM_NAME_FULL) - $TEST_NAME"
     command:
@@ -327,8 +299,6 @@ EOF
 
 EOF
             else
-                CONCURRENCY=$MAC_CONCURRENCY
-                CONCURRENCY_GROUP=$MAC_CONCURRENCY_GROUP
                 cat <<EOF
   - label: "$(echo "$PLATFORM_JSON" | jq -r .ICON) $(echo "$PLATFORM_JSON" | jq -r .PLATFORM_NAME_FULL) - $TEST_NAME"
     command:
@@ -336,7 +306,7 @@ EOF
       - "cd eos && buildkite-agent artifact download build.tar.gz . --step '$(echo "$PLATFORM_JSON" | jq -r .ICON) $(echo "$PLATFORM_JSON" | jq -r .PLATFORM_NAME_FULL) - Build' && tar -xzf build.tar.gz"
       - "cd eos && ./.cicd/test.sh scripts/serial-test.sh $TEST_NAME"
     plugins:
-      - EOSIO/anka#v0.5.7:
+      - EOSIO/anka#v0.6.1:
           no-volume: true
           inherit-environment-vars: true
           vm-name: ${MOJAVE_ANKA_TEMPLATE_NAME}
@@ -347,19 +317,14 @@ EOF
           failover-registries:
             - 'registry_1'
             - 'registry_2'
-          pre-execute-ping-sleep: "8.8.8.8"
+      - EOSIO/skip-checkout#v0.1.1:
+          cd: ~
     agents: "queue=mac-anka-node-fleet"
     retry:
       manual:
         permit_on_passed: true
     timeout: ${TIMEOUT:-60}
     skip: \${SKIP_$(echo "$PLATFORM_JSON" | jq -r .PLATFORM_NAME_UPCASE)_$(echo "$PLATFORM_JSON" | jq -r .VERSION_MAJOR)$(echo "$PLATFORM_JSON" | jq -r .VERSION_MINOR)}${SKIP_SERIAL_TESTS}
-EOF
-            fi
-            if [ "$BUILDKITE_SOURCE" = "schedule" ]; then
-                cat <<EOF
-    concurrency: ${CONCURRENCY}
-    concurrency_group: ${CONCURRENCY_GROUP}
 EOF
             fi
             echo
@@ -373,8 +338,6 @@ EOF
         LR_TESTS="$(cat tests/CMakeLists.txt | grep long_running_tests | grep -v "^#" | awk -F" " '{ print $2 }')"
         for TEST_NAME in $LR_TESTS; do
             if [[ ! "$(echo "$PLATFORM_JSON" | jq -r .FILE_NAME)" =~ 'macos' ]]; then
-                CONCURRENCY=$LINUX_CONCURRENCY
-                CONCURRENCY_GROUP=$LINUX_CONCURRENCY_GROUP
                 cat <<EOF
   - label: "$(echo "$PLATFORM_JSON" | jq -r .ICON) $(echo "$PLATFORM_JSON" | jq -r .PLATFORM_NAME_FULL) - $TEST_NAME"
     command:
@@ -393,8 +356,6 @@ EOF
 
 EOF
             else
-                CONCURRENCY=$MAC_CONCURRENCY
-                CONCURRENCY_GROUP=$MAC_CONCURRENCY_GROUP
                 cat <<EOF
   - label: "$(echo "$PLATFORM_JSON" | jq -r .ICON) $(echo "$PLATFORM_JSON" | jq -r .PLATFORM_NAME_FULL) - $TEST_NAME"
     command:
@@ -402,7 +363,7 @@ EOF
       - "cd eos && buildkite-agent artifact download build.tar.gz . --step '$(echo "$PLATFORM_JSON" | jq -r .ICON) $(echo "$PLATFORM_JSON" | jq -r .PLATFORM_NAME_FULL) - Build' ${BUILD_SOURCE} && tar -xzf build.tar.gz"
       - "cd eos && ./.cicd/test.sh scripts/long-running-test.sh $TEST_NAME"
     plugins:
-      - EOSIO/anka#v0.5.7:
+      - EOSIO/anka#v0.6.1:
           no-volume: true
           inherit-environment-vars: true
           vm-name: ${MOJAVE_ANKA_TEMPLATE_NAME}
@@ -413,19 +374,14 @@ EOF
           failover-registries:
             - 'registry_1'
             - 'registry_2'
-          pre-execute-ping-sleep: "8.8.8.8"
+      - EOSIO/skip-checkout#v0.1.1:
+          cd: ~
     agents: "queue=mac-anka-node-fleet"
     retry:
       manual:
         permit_on_passed: true
     timeout: ${TIMEOUT:-180}
     skip: \${SKIP_$(echo "$PLATFORM_JSON" | jq -r .PLATFORM_NAME_UPCASE)_$(echo "$PLATFORM_JSON" | jq -r .VERSION_MAJOR)$(echo "$PLATFORM_JSON" | jq -r .VERSION_MINOR)}${SKIP_LONG_RUNNING_TESTS:-true}
-EOF
-            fi
-            if [ "$BUILDKITE_SOURCE" = "schedule" ]; then
-                cat <<EOF
-    concurrency: ${CONCURRENCY}
-    concurrency_group: ${CONCURRENCY_GROUP}
 EOF
             fi
             echo
@@ -439,7 +395,7 @@ EOF
     fi
 done
 # Execute multiversion test
-if ( [[ ! $PINNED == false ]] ); then
+if [[ ! "$PINNED" == 'false' || "$SKIP_MULTIVERSION_TEST" == 'false' ]]; then
         cat <<EOF
   - label: ":pipeline: Multiversion Test"
     command: 
@@ -585,10 +541,10 @@ cat <<EOF
       - "cd eos && buildkite-agent artifact download build.tar.gz . --step ':darwin: macOS 10.14 - Build' && tar -xzf build.tar.gz"
       - "cd eos && ./.cicd/package.sh"
     plugins:
-      - EOSIO/anka#v0.5.7:
+      - EOSIO/anka#v0.6.1:
           no-volume: true
           inherit-environment-vars: true
-          vm-name: 10.14.6_6C_14G_40G
+          vm-name: 10.14.6_6C_14G_80G
           vm-registry-tag: "clean::cicd::git-ssh::nas::brew::buildkite-agent"
           always-pull: true
           debug: true
@@ -596,10 +552,11 @@ cat <<EOF
           failover-registries:
             - 'registry_1'
             - 'registry_2'
-          pre-execute-ping-sleep: "8.8.8.8"
+      - EOSIO/skip-checkout#v0.1.1:
+          cd: ~
     agents:
       - "queue=mac-anka-node-fleet"
-    timeout: ${TIMEOUT:-10}
+    timeout: ${TIMEOUT:-30}
     skip: ${SKIP_MACOS_10_14}${SKIP_PACKAGE_BUILDER}${SKIP_MAC}
 
   - label: ":docker: Docker - Label Container with Git Branch and Git Tag"
