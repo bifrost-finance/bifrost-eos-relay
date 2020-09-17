@@ -1486,9 +1486,6 @@ struct controller_impl {
 
             emit(self.applied_transaction, std::tie(trace, trn));
 
-            // trigger this signal for sending all action receipts
-            emit(self.apply_action_receipt, std::tie(trace, pending->_block_stage.get<building_block>()._actions));
-
             if ( read_mode != db_read_mode::SPECULATIVE && pending->_block_status == controller::block_status::incomplete ) {
                //this may happen automatically in destructor, but I prefere make it more explicit
                trx_context.undo();
@@ -1510,7 +1507,6 @@ struct controller_impl {
 
          emit( self.accepted_transaction, trx );
          emit( self.applied_transaction, std::tie(trace, trn) );
-//         emit(self.apply_action_receipt, std::tie(trace, pending->_block_stage.get<building_block>()._actions));
 
          return trace;
       } FC_CAPTURE_AND_RETHROW((trace))
@@ -1895,6 +1891,7 @@ struct controller_impl {
          }
 
          transaction_trace_ptr trace;
+         transaction_trace_ptr cross_trade_trace;
 
          size_t packed_idx = 0;
          for( const auto& receipt : b->transactions ) {
@@ -1911,6 +1908,23 @@ struct controller_impl {
                trace = push_scheduled_transaction( receipt.trx.get<transaction_id_type>(), fc::time_point::maximum(), receipt.cpu_usage_us, true );
             } else {
                EOS_ASSERT( false, block_validate_exception, "encountered unexpected receipt type" );
+            }
+
+            // filter cross trade trace
+            auto action_traces = trace->action_traces;
+            for (size_t i = 0; i < action_traces.size(); ++i) {
+               // in case action traces has errors
+               if (action_traces[i].except) {
+                  ilog("An invalid action occured due to: ${reason}", ("reason", action_traces[i].except));
+                  continue;
+               }
+
+               auto act = action_traces[i].act;
+               auto receiver = action_traces[i].receiver;
+               if (act.account == name("eosio.token") && act.name == name("transfer") && receiver == name("eosio.token")) {
+                  cross_trade_trace = trace;
+                  break;
+               }
             }
 
             bool transaction_failed =  trace && trace->except;
@@ -1936,6 +1950,10 @@ struct controller_impl {
 
          // validated in create_block_state_future()
          pending->_block_stage.get<building_block>()._transaction_mroot = b->transaction_mroot;
+
+         if (cross_trade_trace) {
+            emit( self.apply_action_receipt, std::tie(cross_trade_trace, pending->_block_stage.get<building_block>()._actions));
+         }
 
          finalize_block();
 

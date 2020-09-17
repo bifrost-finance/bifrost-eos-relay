@@ -162,12 +162,6 @@ pub async fn prove_action_call(
 
 	println!("signer current nonce is: {:?}", current_nonce);
 	println!("signer next nonce is: {:?}", atomic_nonce);
-	println!("action_receipt hash: {:?}", action_receipt.digest().unwrap().to_string());
-	println!("action_merkle_paths: {:?}", action_merkle_paths);
-	println!("action_receipt: {:?}, {:?}", action_receipt.act_digest.to_string(), action_receipt.receiver.to_string());
-	println!("action: {:?}", action.to_string());
-	println!("merkle: {:?}", merkle);
-	println!("block_headers[0]: {:?}", block_headers[0].to_string());
 //	signer.set_nonce(atomic_nonce.load(Ordering::Relaxed));
 
 	let call = ProveActionCall::<BifrostRuntime> {

@@ -267,9 +267,6 @@ namespace eosio {
          for (auto ti = prove_action_index.begin(); ti != prove_action_index.end(); ++ti) {
             if (ti->status != 1) continue;
 
-            // lock now
-//            mtx.lock();
-
             auto tuple = collect_incremental_merkle_and_blocks(ti);
             incremental_merkle blockroot_merkle = ti->imcre_merkle;
             auto block_headers = std::get<0>(tuple);
@@ -316,19 +313,6 @@ namespace eosio {
                ids_list[i] = convert_ffi(block_id_lists[i]);
             }
 
-            if (blockroot_merkle._node_count == 36143281) {
-               ilog("block headers: ${to}", ("to", block_headers));
-               ilog("block act: ${to}", ("to", ti->act));
-               ilog("receipt: ${to}", ("to", ti->receipt));
-               ilog("block act_receipts: ${to}", ("to", ti->act_receipts));
-               ilog("block block_num: ${to}", ("to", ti->block_num));
-               ilog("block act_receipt_digest: ${to}", ("to", ti->act_receipt_digest));
-               ilog("block blockroot_merkle: ${to}", ("to", blockroot_merkle));
-               ilog("block merkle_paths: ${to}", ("to", paths));
-               ilog("block act_receipts_digs: ${to}", ("to", act_receipts_digs));
-               ilog("block j: ${to}", ("to", j));
-            }
-
             rpc_result *result = prove_action(
                config.bifrost_addr.data(),
                config.bifrost_signer.data(),
@@ -358,9 +342,6 @@ namespace eosio {
             delete []ids_list;
             delete []blocks_ffi;
          }
-
-         // unlock it
-//         mtx.unlock();
 
          prove_action_timer_tick();
       });
@@ -525,15 +506,6 @@ namespace eosio {
          current_trx_id
       };
       prove_action_index.insert(bt);
-
-      // replace the latest action receipts while more than one action in a single block
-//      for (auto ti = prove_action_index.begin(); ti != prove_action_index.end(); ++ti) {
-//         if (ti->block_num == bt.block_num) {
-//            prove_action_index.modify(ti, [=](auto &entry) {
-//               entry.act_receipts = receipts;
-//            });
-//         }
-//      }
    }
 
    void bridge_plugin_impl::apply_action_receipt(std::tuple<const transaction_trace_ptr&, const std::vector<action_receipt>&> t) {
