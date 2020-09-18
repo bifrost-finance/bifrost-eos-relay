@@ -16,10 +16,16 @@
 
 use codec::Encode;
 use core::marker::PhantomData;
-use eos_chain::{Action, ActionReceipt, Checksum256, Digest, IncrementalMerkle, ProducerAuthoritySchedule, SignedBlockHeader};
+use eos_chain::{
+	Action, ActionReceipt, Checksum256, Digest, IncrementalMerkle,
+	ProducerAuthoritySchedule, SignedBlockHeader
+};
 use once_cell::sync::Lazy; // sync::OnceCell is thread-safe
 use once_cell::sync::OnceCell; // sync::OnceCell is thread-safe
-use subxt::{PairSigner, DefaultNodeRuntime as BifrostRuntime, Call, Client, system::{AccountStoreExt, System, SystemEventsDecoder}};
+use subxt::{
+	PairSigner, DefaultNodeRuntime as BifrostRuntime, Call, Client,
+	system::{AccountStoreExt, System, SystemEventsDecoder}, Error as SubxtErr,
+};
 use sp_core::{sr25519::Pair, Pair as TraitPair};
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -121,6 +127,7 @@ pub async fn prove_action_call(
 
 	// set nonce to avoid multiple trades using the same nonce, that will cause some trades will be abandoned.
 	// https://substrate.dev/docs/en/knowledgebase/learn-substrate/tx-pool
+//	static atomic_nonce: AtomicU32 = AtomicU32::new(0);
 	static atomic_nonce: AtomicU32 = AtomicU32::new(0);
 	static signer_current_nonce: AtomicU32 = AtomicU32::new(0);
 //	static mut latest_nonce: u32 = 0;
@@ -131,38 +138,45 @@ pub async fn prove_action_call(
 //	}
 
 	// ensure atomic nonce is bigger than current user nonce
-//	if atomic_nonce.load(Ordering::Relaxed) <= current_nonce {
-//		atomic_nonce.swap(current_nonce, Ordering::Relaxed);
-//	}
+	if atomic_nonce.load(Ordering::Relaxed) <= current_nonce {
+		atomic_nonce.swap(current_nonce, Ordering::Relaxed);
+	}
 //
 //	// this means signer nonce has changed.
 //	if signer_current_nonce.load(Ordering::Relaxed) < current_nonce {
 //		signer_current_nonce.swap(current_nonce, Ordering::Relaxed);
 //	}
 
-	let gap = signer_current_nonce.load(Ordering::Relaxed) as i32 - current_nonce as i32;
-	match gap {
-		gap if gap == 0 => {
-			// no change on nonce
-//			atomic_nonce.fetch_add(1, Ordering::SeqCst); // increment 1
-			signer.set_nonce(atomic_nonce.load(Ordering::Relaxed) + 1 + current_nonce);
-		}
-		gap if gap > 0 => {
-			// maybe it's unlikely to happen
-			();
-		}
-		gap if gap < 0 => {
-			// nonce has changed
-			signer.set_nonce(current_nonce);
-//			signer_current_nonce.swap(current_nonce, Ordering::Relaxed);
-//			atomic_nonce.swap(0, Ordering::Relaxed);
-		}
-		_ => (),
-	}
+//	println!("current nonce is: {:?}", current_nonce);
+//	let gap = signer_current_nonce.load(Ordering::Relaxed) as i32 - current_nonce as i32;
+//	match gap {
+//		gap if gap == 0 => {
+//			// no change on nonce
+////			atomic_nonce.fetch_add(1, Ordering::SeqCst); // increment 1
+//			signer.set_nonce(atomic_nonce.load(Ordering::Relaxed) + 1 + current_nonce);
+//			println!("equal signer current nonce is: {:?}", atomic_nonce.load(Ordering::Relaxed) + 1 + current_nonce);
+//			println!("equal atomic_nonce is: {:?}", atomic_nonce);
+////			atomic_nonce.fetch_add(1, Ordering::SeqCst); // increment 1
+//		}
+//		gap if gap > 0 => {
+//			// maybe it's unlikely to happen
+//			();
+//		}
+//		gap if gap < 0 => {
+//			// nonce has changed
+//			signer.set_nonce(current_nonce);
+//			println!("new signer current nonce is: {:?}", current_nonce);
+//			println!("new atomic_nonce is: {:?}", atomic_nonce);
+////			atomic_nonce.swap(0, Ordering::Relaxed);
+////			signer_current_nonce.swap(current_nonce, Ordering::Relaxed);
+////			atomic_nonce.swap(0, Ordering::Relaxed);
+//		}
+//		_ => (),
+//	}
 
-	println!("signer current nonce is: {:?}", current_nonce);
-	println!("signer next nonce is: {:?}", atomic_nonce);
-//	signer.set_nonce(atomic_nonce.load(Ordering::Relaxed));
+	println!("atomic_nonce is: {:?}", atomic_nonce);
+	println!("signer_current_nonce is: {:?}", current_nonce);
+	signer.set_nonce(atomic_nonce.load(Ordering::Relaxed));
 
 	let call = ProveActionCall::<BifrostRuntime> {
 		action,
@@ -175,26 +189,34 @@ pub async fn prove_action_call(
 		_runtime: PhantomData
 	};
 	let block_hash = client.submit(call, &signer).await.map_err(|e| {
-		println!("the real reason is: {:?}", e);
+		if let SubxtErr::Rpc(err) = e {
+			// the full error: Rpc(Request(Error { code: ServerError(1014), message: "Priority is too low: (0 vs 0)",
+			// data: Some(String("The transaction has too low priority to replace another transaction already in the pool.")) }))
+			println!("error is: {:?}", err);
+			if err.to_string().as_str().contains("Priority is too low") {
+				atomic_nonce.fetch_add(1, Ordering::SeqCst);
+			}
+		}
 		crate::Error::SubxtError("failed to commit this transaction")
 	})?;
+	atomic_nonce.fetch_add(1, Ordering::SeqCst);
 
-	match gap {
-		gap if gap == 0 => {
-			// no change on nonce
-			atomic_nonce.fetch_add(1, Ordering::SeqCst); // increment 1
-		}
-		gap if gap > 0 => {
-			// maybe it's unlikely to happen
-			();
-		}
-		gap if gap < 0 => {
-			// nonce has changed
-			signer_current_nonce.swap(current_nonce, Ordering::Relaxed);
-			atomic_nonce.swap(0, Ordering::Relaxed);
-		}
-		_ => (),
-	}
+//	match gap {
+//		gap if gap == 0 => {
+//			// no change on nonce
+//			atomic_nonce.fetch_add(1, Ordering::SeqCst); // increment 1
+//		}
+//		gap if gap > 0 => {
+//			// maybe it's unlikely to happen
+//			();
+//		}
+//		gap if gap < 0 => {
+//			// nonce has changed
+//			signer_current_nonce.swap(current_nonce, Ordering::Relaxed);
+//			atomic_nonce.swap(0, Ordering::Relaxed);
+//		}
+//		_ => (),
+//	}
 
 	// if trade success, change nonce
 //	atomic_update_nonce(&atomic_nonce, current_nonce);
