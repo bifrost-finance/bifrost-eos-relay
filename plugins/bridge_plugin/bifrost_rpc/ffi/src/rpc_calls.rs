@@ -128,8 +128,8 @@ pub async fn prove_action_call(
 	// set nonce to avoid multiple trades using the same nonce, that will cause some trades will be abandoned.
 	// https://substrate.dev/docs/en/knowledgebase/learn-substrate/tx-pool
 //	static atomic_nonce: AtomicU32 = AtomicU32::new(0);
-	static atomic_nonce: AtomicU32 = AtomicU32::new(0);
-	static signer_current_nonce: AtomicU32 = AtomicU32::new(0);
+//	static atomic_nonce: AtomicU32 = AtomicU32::new(0);
+//	static signer_current_nonce: AtomicU32 = AtomicU32::new(0);
 //	static mut latest_nonce: u32 = 0;
 	let current_nonce = client.account(&signer.signer().public().into(), None).await.map_err(|_| crate::Error::WrongSudoSeed)?.nonce;
 	// initialize signer current nonce
@@ -138,9 +138,9 @@ pub async fn prove_action_call(
 //	}
 
 	// ensure atomic nonce is bigger than current user nonce
-	if atomic_nonce.load(Ordering::Relaxed) <= current_nonce {
-		atomic_nonce.swap(current_nonce, Ordering::Relaxed);
-	}
+//	if atomic_nonce.load(Ordering::Relaxed) <= current_nonce {
+//		atomic_nonce.swap(current_nonce, Ordering::Relaxed);
+//	}
 //
 //	// this means signer nonce has changed.
 //	if signer_current_nonce.load(Ordering::Relaxed) < current_nonce {
@@ -174,9 +174,10 @@ pub async fn prove_action_call(
 //		_ => (),
 //	}
 
-	println!("atomic_nonce is: {:?}", atomic_nonce);
+//	println!("atomic_nonce is: {:?}", atomic_nonce);
+//	println!("signer_current_nonce is: {:?}", atomic_nonce.load(Ordering::Relaxed));
 	println!("signer_current_nonce is: {:?}", current_nonce);
-	signer.set_nonce(atomic_nonce.load(Ordering::Relaxed));
+//	signer.set_nonce(atomic_nonce.load(Ordering::Relaxed) - 1);
 
 	let call = ProveActionCall::<BifrostRuntime> {
 		action,
@@ -188,18 +189,69 @@ pub async fn prove_action_call(
 		trx_id,
 		_runtime: PhantomData
 	};
-	let block_hash = client.submit(call, &signer).await.map_err(|e| {
-		if let SubxtErr::Rpc(err) = e {
-			// the full error: Rpc(Request(Error { code: ServerError(1014), message: "Priority is too low: (0 vs 0)",
-			// data: Some(String("The transaction has too low priority to replace another transaction already in the pool.")) }))
-			println!("error is: {:?}", err);
-			if err.to_string().as_str().contains("Priority is too low") {
-				atomic_nonce.fetch_add(1, Ordering::SeqCst);
-			}
+//	let block_hash = client.submit(call, &signer).await.map_err(|e| {
+//		if let SubxtErr::Rpc(err) = e {
+//			// the full error: Rpc(Request(Error { code: ServerError(1014), message: "Priority is too low: (0 vs 0)",
+//			// data: Some(String("The transaction has too low priority to replace another transaction already in the pool.")) }))
+//			println ! ("error is: {:?}", err.to_string());
+//			//			if err.to_string().as_str().contains("Priority is too low") {
+//			//				atomic_nonce.fetch_add(1, Ordering::SeqCst);
+//			//			}
+//		}
+//		crate::Error::SubxtError("failed to commit this transaction")
+//	})?;
+//	if let Err(SubxtErr::Rpc(e)) = client.submit(call, &signer).await {
+//		signer.increment_nonce();
+//		let trx_id = client.submit(call, &signer).await.map_err(|e| {
+//			println ! ("error is: {:?}", e.to_string());
+//			crate::Error::SubxtError("failed to commit this transaction")
+//		})?;
+//		return Ok(trx_id.to_string());
+//	}
+	match client.submit(call.clone(), &signer).await {
+		Ok(trx_id) => Ok(trx_id.to_string()),
+		Err(SubxtErr::Rpc(e)) => {
+			signer.increment_nonce();
+			let trx_id = client.submit(call, &signer).await.map_err(|e| {
+				println ! ("error is: {:?}", e.to_string());
+				crate::Error::SubxtError("failed to commit this transaction")
+			})?;
+			Ok(trx_id.to_string())
 		}
-		crate::Error::SubxtError("failed to commit this transaction")
-	})?;
-	atomic_nonce.fetch_add(1, Ordering::SeqCst);
+		_ => Err(crate::Error::SubxtError("failed to commit this transaction"))
+	}
+
+//	let mut index = 0u32;
+//	loop {
+//		println!("signer_current_nonce is: {:?}, index: {:?}", current_nonce, index);
+//		match client.submit(call.clone(), &signer).await {
+//			Ok(trx_id) => return Ok(trx_id.to_string()),
+//			Err(SubxtErr::Rpc(e)) => {
+//				if e.to_string().as_str().contains("Priority is too low") {
+//					index += 1;
+//					signer.increment_nonce();
+//				}
+//			}
+//			_ => {}
+//		}
+//
+//		if index >= 30 {
+//			break;
+//		}
+//	}
+//
+//	Err(crate::Error::SubxtError("failed to commit this transaction"))
+//	while let Err(SubxtErr::Rpc(e)) = client.submit(call.clone(), &signer).await {
+//		if err.to_string().as_str().contains("Priority is too low") {
+//			signer.increment_nonce();
+//		}
+//	}
+//	atomic_nonce.fetch_add(1, Ordering::SeqCst);
+
+//	let gap = atomic_nonce.load(Ordering::Relaxed) as i32 - current_nonce as i32;
+//	if gap >= 30 {
+//		atomic_nonce.swap(current_nonce, Ordering::Relaxed);
+//	}
 
 //	match gap {
 //		gap if gap == 0 => {
@@ -222,7 +274,7 @@ pub async fn prove_action_call(
 //	atomic_update_nonce(&atomic_nonce, current_nonce);
 //	atomic_nonce.fetch_add(1, Ordering::SeqCst);
 
-	Ok(block_hash.to_string())
+//	Ok(block_hash.to_string())
 }
 
 async fn get_available_bifrost_client(urls: impl IntoIterator<Item=String>)

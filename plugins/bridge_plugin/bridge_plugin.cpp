@@ -9,6 +9,7 @@
 #include <fc/log/logger_config.hpp>
 #include <fc/io/json.hpp>
 #include <mutex>
+#include <thread>
 
 #include "bifrost_rpc.h"
 #include <eosio/bridge_plugin/bridge_plugin.hpp>
@@ -263,7 +264,7 @@ namespace eosio {
    void bridge_plugin_impl::prove_action_timer_tick() {
       prove_action_timer->expires_from_now(prove_action_timeout);
       prove_action_timer->async_wait([&](boost::system::error_code ec) {
-         ilog("How many transaction we have now: ${act}", ("act", prove_action_index.size()));
+         ilog("How many transaction we have now: ${act}, and thread id: ${id}", ("act", prove_action_index.size())("id", std::hash<std::thread::id>{}(std::this_thread::get_id())));
          for (auto ti = prove_action_index.begin(); ti != prove_action_index.end(); ++ti) {
             if (ti->status != 1) continue;
 
@@ -350,7 +351,7 @@ namespace eosio {
    // listen and retrieve block headers, collecting block headers for verifying
    void bridge_plugin_impl::irreversible_block(const chain::block_state_ptr &block) {
       // flush buffer
-      uint64_t block_index_max_size = 10240;
+      uint64_t block_index_max_size = 1024; // How many transaction will be stored.
       if (prove_action_index.size() >= block_index_max_size && prove_action_index.begin()->status == 2) {
          prove_action_index.erase(prove_action_index.begin());
       }
