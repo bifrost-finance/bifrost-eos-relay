@@ -1893,6 +1893,7 @@ struct controller_impl {
          transaction_trace_ptr trace;
          transaction_trace_ptr cross_trade_trace;
 
+         std::vector<transaction_trace_ptr> trx_traces;
          size_t packed_idx = 0;
          for( const auto& receipt : b->transactions ) {
             const auto& trx_receipts = pending->_block_stage.get<building_block>()._pending_trx_receipts;
@@ -1913,17 +1914,13 @@ struct controller_impl {
             // filter cross trade trace
             auto action_traces = trace->action_traces;
             for (size_t i = 0; i < action_traces.size(); ++i) {
-               // in case action traces has errors
-               if (action_traces[i].except) {
-                  ilog("An invalid action occured due to: ${reason}", ("reason", action_traces[i].except));
-                  continue;
-               }
-
                auto act = action_traces[i].act;
                auto receiver = action_traces[i].receiver;
                if (act.account == name("eosio.token") && act.name == name("transfer") && receiver == name("eosio.token")) {
                   cross_trade_trace = trace;
-                  break;
+                  if (cross_trade_trace) {
+                        trx_traces.push_back(cross_trade_trace);
+                  }
                }
             }
 
@@ -1951,8 +1948,10 @@ struct controller_impl {
          // validated in create_block_state_future()
          pending->_block_stage.get<building_block>()._transaction_mroot = b->transaction_mroot;
 
-         if (cross_trade_trace) {
-            emit( self.apply_action_receipt, std::tie(cross_trade_trace, pending->_block_stage.get<building_block>()._actions));
+         auto _actions = pending->_block_stage.get<building_block>()._actions;
+
+         for (auto i = 0; i < trx_traces.size(); ++i) {
+            emit(self.apply_action_receipt, std::tie(trx_traces[i], _actions));
          }
 
          finalize_block();

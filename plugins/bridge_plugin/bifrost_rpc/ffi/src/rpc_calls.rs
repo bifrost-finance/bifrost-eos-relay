@@ -127,7 +127,7 @@ pub async fn prove_action_call(
 
 	// set nonce to avoid multiple trades using the same nonce, that will cause some trades will be abandoned.
 	// https://substrate.dev/docs/en/knowledgebase/learn-substrate/tx-pool
-//	static atomic_nonce: AtomicU32 = AtomicU32::new(0);
+	static atomic_nonce: AtomicU32 = AtomicU32::new(0);
 //	static atomic_nonce: AtomicU32 = AtomicU32::new(0);
 //	static signer_current_nonce: AtomicU32 = AtomicU32::new(0);
 //	static mut latest_nonce: u32 = 0;
@@ -138,9 +138,9 @@ pub async fn prove_action_call(
 //	}
 
 	// ensure atomic nonce is bigger than current user nonce
-//	if atomic_nonce.load(Ordering::Relaxed) <= current_nonce {
-//		atomic_nonce.swap(current_nonce, Ordering::Relaxed);
-//	}
+	if atomic_nonce.load(Ordering::Relaxed) <= current_nonce {
+		atomic_nonce.swap(current_nonce, Ordering::Relaxed);
+	}
 //
 //	// this means signer nonce has changed.
 //	if signer_current_nonce.load(Ordering::Relaxed) < current_nonce {
@@ -177,7 +177,8 @@ pub async fn prove_action_call(
 //	println!("atomic_nonce is: {:?}", atomic_nonce);
 //	println!("signer_current_nonce is: {:?}", atomic_nonce.load(Ordering::Relaxed));
 	println!("signer_current_nonce is: {:?}", current_nonce);
-//	signer.set_nonce(atomic_nonce.load(Ordering::Relaxed) - 1);
+	signer.set_nonce(atomic_nonce.load(Ordering::Relaxed));
+	atomic_nonce.fetch_add(1, Ordering::SeqCst);
 
 	let call = ProveActionCall::<BifrostRuntime> {
 		action,
@@ -211,7 +212,7 @@ pub async fn prove_action_call(
 	match client.submit(call.clone(), &signer).await {
 		Ok(trx_id) => Ok(trx_id.to_string()),
 		Err(SubxtErr::Rpc(e)) => {
-			signer.increment_nonce();
+//			signer.increment_nonce();
 			let trx_id = client.submit(call, &signer).await.map_err(|e| {
 				println ! ("error is: {:?}", e.to_string());
 				crate::Error::SubxtError("failed to commit this transaction")

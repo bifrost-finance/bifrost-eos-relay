@@ -96,6 +96,8 @@ namespace eosio {
       void open_db();
       void close_db();
 
+      std::atomic<bool>                     in_shutdown{false};
+
       std::tuple<std::vector<signed_block_header>, std::vector<std::vector<block_id_type>>, bool> collect_incremental_merkle_and_blocks(bridge_change_schedule_index::iterator &);
       std::tuple<std::vector<signed_block_header>, std::vector<std::vector<block_id_type>>, bool> collect_incremental_merkle_and_blocks(bridge_prove_action_index::iterator &);
 
@@ -212,8 +214,7 @@ namespace eosio {
 
             if (!found) {
                ilog("It doesn't finish collecting related blocks, cotinue");
-               change_schedule_timer_tick();
-               return;
+               continue;
             }
 
             signed_block_header_ffi *blocks_ffi = new signed_block_header_ffi[block_headers.size()];
@@ -262,86 +263,94 @@ namespace eosio {
    }
 
    void bridge_plugin_impl::prove_action_timer_tick() {
+      if( in_shutdown ) return;
+
       prove_action_timer->expires_from_now(prove_action_timeout);
       prove_action_timer->async_wait([&](boost::system::error_code ec) {
-         ilog("How many transaction we have now: ${act}, and thread id: ${id}", ("act", prove_action_index.size())("id", std::hash<std::thread::id>{}(std::this_thread::get_id())));
-         for (auto ti = prove_action_index.begin(); ti != prove_action_index.end(); ++ti) {
-            if (ti->status != 1) continue;
+         ilog("prove_action_index size: ${to}", ("to", prove_action_index.size()));
+         if (ec) {
+            ilog("error happened while trigger sending transaction");
+            if( in_shutdown ) return;
+            prove_action_timer_tick();
+         } else {
+            for (auto ti = prove_action_index.begin(); ti != prove_action_index.end(); ++ti) {
+               if (ti->status != 1) continue;
 
-            auto tuple = collect_incremental_merkle_and_blocks(ti);
-            incremental_merkle blockroot_merkle = ti->imcre_merkle;
-            auto block_headers = std::get<0>(tuple);
-            auto block_id_lists = std::get<1>(tuple);
-            auto found = std::get<2>(tuple);
+               auto tuple = collect_incremental_merkle_and_blocks(ti);
+               incremental_merkle blockroot_merkle = ti->imcre_merkle;
+               auto block_headers = std::get<0>(tuple);
+               auto block_id_lists = std::get<1>(tuple);
+               auto found = std::get<2>(tuple);
 
-            if (!found) {
-               ilog("It doesn't finish collecting related blocks, cotinue");
-               prove_action_timer_tick();
-               return;
-            }
-
-            signed_block_header_ffi *blocks_ffi = new signed_block_header_ffi[block_headers.size()];
-            for (size_t i = 0; i < block_headers.size(); ++i) {
-               auto p = new signed_block_header_ffi(block_headers[i]);
-               blocks_ffi[i] = *p;
-            }
-
-            auto receipts = action_receipt_ffi(ti->receipt);
-            auto act_ffi = action_ffi(ti->act);
-            auto merkle_ptr = convert_ffi(blockroot_merkle);
-
-            std::vector<block_id_type> act_receipts_digs;
-            int j = -1;
-            for (size_t i = 0; i < ti->act_receipts.size(); ++i) {
-               auto dig = ti->act_receipts[i].digest();
-               if (dig == ti->act_receipt_digest) j = i;
-               act_receipts_digs.push_back(dig);
-            }
-            if (j < 0) {
-               ilog("This is an invalid transaction due to wrong action receipt: ${act}", ("act", ti->act));
-               ilog("all receipts: ${to}", ("to", ti->act_receipts));
-               ilog("all receipts hash: ${to}", ("to", ti->act_receipt_digest));
-               ilog("act_receipt_digest: ${to}", ("to", ti->act_receipt_digest));
-               ilog("imcre_merkle: ${to}", ("to", ti->imcre_merkle));
-               ilog("receipt: ${to}", ("to", ti->receipt));
-               continue;
-            }
-            auto paths = get_proof(j, act_receipts_digs);
-            auto merkle_paths = convert_ffi(paths);
-
-            block_id_type_list *ids_list = new block_id_type_list[block_id_lists.size()];
-            for (size_t i = 0; i < block_id_lists.size(); ++i) {
-               ids_list[i] = convert_ffi(block_id_lists[i]);
-            }
-
-            rpc_result *result = prove_action(
-               config.bifrost_addr.data(),
-               config.bifrost_signer.data(),
-               &act_ffi,
-               &merkle_ptr,
-               &receipts,
-               &merkle_paths,
-               blocks_ffi,
-               block_headers.size(),
-               ids_list,
-               block_id_lists.size(),
-               ti->trx_id
-            );
-
-            if (result) { // not null
-               if (result->success) {
-                  prove_action_index.modify(ti, [&](auto &entry) {
-                     entry.status = 2; // sent successfully
-                  });
-                  ilog("sent data to bifrost for proving action.");
-                  ilog("Transaction got finalized. Hash: ${hash}.", ("hash", std::string(result->msg)));
-               } else {
-                  ilog("failed to send data to bifrost for proving action due to: ${err}.", ("err", std::string(result->msg)));
+               if (!found) {
+                  ilog("It doesn't finish collecting related blocks, cotinue");
+                  continue;
                }
-            }
 
-            delete []ids_list;
-            delete []blocks_ffi;
+               signed_block_header_ffi *blocks_ffi = new signed_block_header_ffi[block_headers.size()];
+               for (size_t i = 0; i < block_headers.size(); ++i) {
+                  auto p = new signed_block_header_ffi(block_headers[i]);
+                  blocks_ffi[i] = *p;
+               }
+
+               auto receipts = action_receipt_ffi(ti->receipt);
+               auto act_ffi = action_ffi(ti->act);
+               auto merkle_ptr = convert_ffi(blockroot_merkle);
+
+               std::vector<block_id_type> act_receipts_digs;
+               int j = -1;
+               for (size_t i = 0; i < ti->act_receipts.size(); ++i) {
+                  auto dig = ti->act_receipts[i].digest();
+                  if (dig == ti->act_receipt_digest) j = i;
+                  act_receipts_digs.push_back(dig);
+               }
+               if (j < 0) {
+                  ilog("This is an invalid transaction due to wrong action receipt: ${act}", ("act", ti->act));
+                  ilog("all receipts: ${to}", ("to", ti->act_receipts));
+                  ilog("all receipts hash: ${to}", ("to", ti->act_receipt_digest));
+                  ilog("act_receipt_digest: ${to}", ("to", ti->act_receipt_digest));
+                  ilog("imcre_merkle: ${to}", ("to", ti->imcre_merkle));
+                  ilog("receipt: ${to}", ("to", ti->receipt));
+                  continue;
+               }
+               auto paths = get_proof(j, act_receipts_digs);
+               auto merkle_paths = convert_ffi(paths);
+
+               block_id_type_list *ids_list = new block_id_type_list[block_id_lists.size()];
+               for (size_t i = 0; i < block_id_lists.size(); ++i) {
+                  ids_list[i] = convert_ffi(block_id_lists[i]);
+               }
+
+               rpc_result *result = prove_action(
+                 config.bifrost_addr.data(),
+                 config.bifrost_signer.data(),
+                 &act_ffi,
+                 &merkle_ptr,
+                 &receipts,
+                 &merkle_paths,
+                 blocks_ffi,
+                 block_headers.size(),
+                 ids_list,
+                 block_id_lists.size(),
+                 ti->trx_id
+               );
+
+               if (result) { // not null
+                  if (result->success) {
+                     prove_action_index.modify(ti, [&](auto &entry) {
+                        entry.status = 2; // sent successfully
+                     });
+                     ilog("sent data to bifrost for proving action.");
+                     ilog("Transaction got finalized. Hash: ${hash}.", ("hash", std::string(result->msg)));
+                  } else {
+                     ilog("failed to send data to bifrost for proving action due to: ${err}.",
+                          ("err", std::string(result->msg)));
+                  }
+               }
+
+               delete[]ids_list;
+               delete[]blocks_ffi;
+            }
          }
 
          prove_action_timer_tick();
@@ -351,10 +360,31 @@ namespace eosio {
    // listen and retrieve block headers, collecting block headers for verifying
    void bridge_plugin_impl::irreversible_block(const chain::block_state_ptr &block) {
       // flush buffer
-      uint64_t block_index_max_size = 1024; // How many transaction will be stored.
-      if (prove_action_index.size() >= block_index_max_size && prove_action_index.begin()->status == 2) {
-         prove_action_index.erase(prove_action_index.begin());
+      uint64_t block_index_max_size = 512; // How many transaction will be stored.
+      if (prove_action_index.size() >= block_index_max_size) {
+         if (prove_action_index.begin()->status == 2) prove_action_index.erase(prove_action_index.begin());
       }
+
+//      if (prove_action_index.size() >= block_index_max_size)
+//      {
+//         auto i = prove_action_index.get<by_status>().find(1);
+////      auto r = i.begin();
+////      auto it = prove_action_index.get<0>(i);
+//         auto it = prove_action_index.project<0>(i);
+//         for (; it != prove_action_index.end();) {
+////         ilog("all sent trx: ${to}", ("to", *it));
+//            if (it->status == 1) it = prove_action_index.erase(it);
+//            else ++it;
+//         }
+//      }
+//      auto it = prove_action_index.get<by_status>().begin();
+//      for (; it != prove_action_index.get<by_status>().end(); ) {
+//         if (it->status == 2) prove_action_index.erase(it);
+//         else ++it;
+//      }
+//      ilog("all sent trx: ${to}", ("to", ij));
+//      prove_action_index.erase(it);
+      ilog("all sent trx: ${to}", ("to", prove_action_index.size()));
 
       if (change_schedule_index.size() >= block_index_max_size && change_schedule_index.begin()->status == 2) {
          change_schedule_index.erase(change_schedule_index.begin());
@@ -425,6 +455,7 @@ namespace eosio {
                ilog("collected blocks for changing schedule: ${to}", ("to", block->block_num));
                entry.status = 1; // full
             });
+            change_schedule_timer_tick();
          }
       }
    }
@@ -474,17 +505,22 @@ namespace eosio {
 
             if (der_act.to != name(contract) && der_act.from != name(contract)) return;
 
-            if (!action_traces[i].receipt) return;
+            if (!action_traces[i].receipt) {
+               ilog("action traces is exception.");
+               return;
+            }
             int k = -1;
             if (der_act.from == name(contract) || der_act.to == name(contract)) {
                index = action_traces[i].action_ordinal;
                k = action_traces[i].action_ordinal;
             }
-//            if (act_dig == action_traces[i].receipt->act_digest) index = i;
          }
       }
 
-      if (index < 0) return;
+      if (index < 0) {
+         ilog("cannot find action traces index.");
+         return;
+      }
 
       times += 1;
       ilog("Times of cross trade: ${to}", ("to", times));
@@ -675,6 +711,8 @@ namespace eosio {
    void bridge_plugin::plugin_shutdown() {
       // OK, that's enough magic
       ilog("bridge_plugin::plugin_shutdown.");
+
+      my->in_shutdown = true;
 
       my->close_db();
    }
