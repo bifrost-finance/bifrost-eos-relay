@@ -68,7 +68,7 @@ pub extern "C" fn change_schedule(
     urls:                 *const c_char,
     signer:               *const c_char,
     legacy_schedule_hash: Checksum256,
-    schedule:             *const ProducerAuthorityScheduleFFI,
+    schedule:             *const c_char,
     imcre_merkle:         *const IncrementalMerkleFFI,
     blocks_ffi:           *const SignedBlockHeaderFFI,
     blocks_ffi_size:      size_t,
@@ -101,10 +101,13 @@ pub extern "C" fn change_schedule(
     };
 
     let new_schedule = {
-        let schedule_ffi = &unsafe { ptr::read(schedule) };
-        let new_schedule: Result<ProducerAuthoritySchedule, _> = schedule_ffi.try_into();
+        let new_schedule_str = char_to_string(schedule);
+        if new_schedule_str.is_err() {
+            return generate_raw_result(false, "This is not an valid producer schedule.");
+        }
+        let new_schedule: Result<ProducerAuthoritySchedule, _> = serde_json::from_str(new_schedule_str.as_ref().unwrap());
         if new_schedule.is_err() {
-            return generate_raw_result(false, new_schedule.unwrap_err().to_string());
+            return generate_raw_result(false, "Failed to deserialize producer schedule".to_owned());
         }
         new_schedule.unwrap()
     };

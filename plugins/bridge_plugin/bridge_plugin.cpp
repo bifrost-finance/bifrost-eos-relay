@@ -150,7 +150,7 @@ namespace eosio {
       std::vector<signed_block_header> block_headers; // can reserve a buffer to store id
       block_headers.reserve(15);
 
-      std::vector<std::vector<block_id_type>>   block_id_lists; // can reserve a buffer to store id
+      std::vector<std::vector<block_id_type>>  block_id_lists; // can reserve a buffer to store id
       block_id_lists.reserve(15);
 
       bool block_found = false;
@@ -206,7 +206,10 @@ namespace eosio {
 
             auto tuple = collect_incremental_merkle_and_blocks(ti);
             incremental_merkle blockroot_merkle = ti->imcre_merkle;
-            producer_authority_schedule_ffi new_schedule = producer_authority_schedule_ffi(ti->schedule);
+//            producer_authority_schedule_ffi *new_schedule = new producer_authority_schedule_ffi(ti->schedule);
+//            ilog("new new_schedule ffi");
+
+            string new_schedule = fc::json::to_pretty_string(ti->schedule);
 
             auto block_headers = std::get<0>(tuple);
             auto block_id_lists = std::get<1>(tuple);
@@ -234,7 +237,7 @@ namespace eosio {
                config.bifrost_addr.data(),
                config.bifrost_signer.data(),
                ti->legacy_schedule_hash,
-               &new_schedule,
+               new_schedule.data(),
                &merkle_ptr,
                blocks_ffi,
                block_headers.size(),
@@ -254,8 +257,8 @@ namespace eosio {
                }
             }
 
-            delete []blocks_ffi;
-            delete []ids_list;
+            if (blocks_ffi) delete []blocks_ffi;
+            if (ids_list) delete []ids_list;
          }
 
          change_schedule_timer_tick();
@@ -348,8 +351,8 @@ namespace eosio {
                   }
                }
 
-               delete[]ids_list;
-               delete[]blocks_ffi;
+               if (blocks_ffi) delete []blocks_ffi;
+               if (ids_list) delete []ids_list;
             }
          }
 
@@ -455,7 +458,6 @@ namespace eosio {
                ilog("collected blocks for changing schedule: ${to}", ("to", block->block_num));
                entry.status = 1; // full
             });
-            change_schedule_timer_tick();
          }
       }
    }

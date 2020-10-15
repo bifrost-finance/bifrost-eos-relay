@@ -34,7 +34,7 @@ eosio::rpc_result *change_schedule(
    const char                                   *urls,
    const char                                   *signer,
    const eosio::digest_type                     legacy_schedule_hash,
-   const eosio::producer_authority_schedule_ffi *schedule,
+   const char                                   *schedule,
    const eosio::incremental_merkle_ffi          *imcre_merkle,
    const eosio::signed_block_header_ffi         *blocks_ffi,
    size_t                                       blocks_ffi_size,

@@ -234,9 +234,9 @@ struct key_weight_ffi {
       key = new char[sig.size() + 1];
       strcpy(key, sig.c_str());
    }
-//   ~key_weight_ffi() {
-//      if (key) delete []key;
-//   }
+   ~key_weight_ffi() {
+      if (key) delete []key;
+   }
 };
 
 struct block_signing_authority_v0_ffi {
@@ -260,9 +260,9 @@ struct block_signing_authority_v0_ffi {
       }
    }
 
-//   ~block_signing_authority_v0_ffi() {
-//      if (keys) delete []keys;
-//   }
+   ~block_signing_authority_v0_ffi() {
+      if (keys) delete []keys;
+   }
 };
 
 struct producer_authority_ffi {
@@ -284,9 +284,9 @@ struct producer_authority_ffi {
       v0_ffi = new block_signing_authority_v0_ffi(v0);
    }
 
-//   ~producer_authority_ffi() {
-//      if (authority_ffi) delete authority_ffi;
-//   }
+   ~producer_authority_ffi() {
+      if (v0_ffi) delete v0_ffi;
+   }
 };
 
 struct producer_authority_schedule_ffi {
