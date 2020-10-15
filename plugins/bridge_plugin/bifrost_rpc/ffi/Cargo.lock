@@ -617,7 +617,7 @@ checksum = "516aa8d7a71cb00a1c4146f0798549b93d083d4f189b3ced8f3de6b8f11ee6c4"
 [[package]]
 name = "eos-chain"
 version = "0.1.0"
-source = "git+https://github.com/bifrost-finance/rust-eos#9c664d0bf804c441ec79cff8b616d54b127c28d3"
+source = "git+https://github.com/bifrost-finance/rust-eos#c71956f56302a5dba576e533818fec1679c098b5"
 dependencies = [
  "bitcoin_hashes",
  "chrono",
@@ -632,19 +632,19 @@ dependencies = [
 [[package]]
 name = "eos-keys"
 version = "0.1.0"
-source = "git+https://github.com/bifrost-finance/rust-eos#9c664d0bf804c441ec79cff8b616d54b127c28d3"
+source = "git+https://github.com/bifrost-finance/rust-eos#c71956f56302a5dba576e533818fec1679c098b5"
 dependencies = [
  "bitcoin_hashes",
  "byteorder",
  "hex",
- "libsecp256k1 0.3.5 (git+https://github.com/bifrost-codes/libsecp256k1.git)",
+ "libsecp256k1 0.3.5 (git+https://github.com/bifrost-finance/libsecp256k1.git)",
  "rand 0.7.3",
 ]
 
 [[package]]
 name = "eosio-core-derive"
 version = "0.2.1"
-source = "git+https://github.com/bifrost-finance/rust-eos#9c664d0bf804c441ec79cff8b616d54b127c28d3"
+source = "git+https://github.com/bifrost-finance/rust-eos#c71956f56302a5dba576e533818fec1679c098b5"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1560,7 +1560,7 @@ dependencies = [
 [[package]]
 name = "libsecp256k1"
 version = "0.3.5"
-source = "git+https://github.com/bifrost-codes/libsecp256k1.git#0ed98d8d094dfb34d9666143ff4090463cc9d174"
+source = "git+https://github.com/bifrost-finance/libsecp256k1.git#62ee7e4eeb55299676c454cb9a40b1de492cadf9"
 dependencies = [
  "arrayref",
  "crunchy",
