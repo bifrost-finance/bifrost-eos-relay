@@ -69,10 +69,10 @@ pub extern "C" fn change_schedule(
     signer:               *const c_char,
     legacy_schedule_hash: Checksum256,
     schedule:             *const c_char,
-    imcre_merkle:         *const IncrementalMerkleFFI,
-    blocks_ffi:           *const SignedBlockHeaderFFI,
+    imcre_merkle:         *const c_char,
+    blocks_ffi:           *const c_char,
     blocks_ffi_size:      size_t,
-    ids_list:             *const Checksum256FFI,
+    ids_list:             *const c_char,
     ids_list_size:        size_t
 ) -> Box<RpcResponse> {
     // check pointers null or not
@@ -113,38 +113,73 @@ pub extern "C" fn change_schedule(
     };
 
     let merkle: IncrementalMerkle = {
-        let imcre_merkle = &unsafe { ptr::read(imcre_merkle) };
-        let r: Result<IncrementalMerkle, _> = imcre_merkle.try_into();
-        if r.is_err() {
-            return generate_raw_result(false, r.unwrap_err().to_string());
+        let imcre_merkle_str = char_to_string(imcre_merkle);
+        if imcre_merkle_str.is_err() {
+            return generate_raw_result(false, "This is not an valid IncrementalMerklee.");
         }
-        r.unwrap()
+        let merkle: Result<IncrementalMerkle, _> = serde_json::from_str(imcre_merkle_str.as_ref().unwrap());
+        if merkle.is_err() {
+            return generate_raw_result(false, "Failed to deserialize IncrementalMerklee".to_owned());
+        }
+        merkle.unwrap()
     };
 
     let block_headers: Vec<SignedBlockHeader> = {
-        let blocks_ffi = &unsafe { slice::from_raw_parts(blocks_ffi, blocks_ffi_size) };
-        let mut block_headers: Vec<_> = Vec::with_capacity(blocks_ffi_size);
-        for block in blocks_ffi.iter() {
-            let ffi = &unsafe { ptr::read(block) };
-            let r: Result<SignedBlockHeader, Error> = ffi.try_into();
-            if r.is_err() {
-                return generate_raw_result(false, r.unwrap_err().to_string());
-            }
-            block_headers.push(r.unwrap());
+        let blockers_str = char_to_string(blocks_ffi);
+        if blockers_str.is_err() {
+            return generate_raw_result(false, "This is not an valid SignedBlockHeader.");
         }
-        block_headers
+        let block_headers: Result<Vec<SignedBlockHeader>, _> = serde_json::from_str(blockers_str.as_ref().unwrap());
+        if block_headers.is_err() {
+            return generate_raw_result(false, "Failed to deserialize SignedBlockHeader".to_owned());
+        }
+        block_headers.unwrap()
     };
 
-    let mut ids_lists: Vec<Vec<Checksum256>>= Vec::with_capacity(15);
-    ids_lists.push(Vec::new());
-    let ids_list_ffi = &unsafe { slice::from_raw_parts(ids_list, ids_list_size) };
-    for ids in ids_list_ffi.iter().skip(1) { // skip first ids due to it's am empty list(null pointer)
-        let r: Result<Vec<Checksum256>, _> = ids.try_into();
-        if r.is_err() {
-            return generate_raw_result(false, r.unwrap_err().to_string());
+    let ids_lists: Vec<Vec<Checksum256>> = {
+        let ids_lists_str = char_to_string(blocks_ffi);
+        if ids_lists_str.is_err() {
+            return generate_raw_result(false, "This is not an valid block id list string.");
         }
-        ids_lists.push(r.unwrap());
-    }
+        let ids_lists: Result<Vec<Vec<Checksum256>>, _> = serde_json::from_str(ids_lists_str.as_ref().unwrap());
+        if ids_lists.is_err() {
+            return generate_raw_result(false, "Failed to deserialize block id list".to_owned());
+        }
+        ids_lists.unwrap()
+    };
+//    let merkle: IncrementalMerkle = {
+//        let imcre_merkle = &unsafe { ptr::read(imcre_merkle) };
+//        let r: Result<IncrementalMerkle, _> = imcre_merkle.try_into();
+//        if r.is_err() {
+//            return generate_raw_result(false, r.unwrap_err().to_string());
+//        }
+//        r.unwrap()
+//    };
+
+//    let block_headers: Vec<SignedBlockHeader> = {
+//        let blocks_ffi = &unsafe { slice::from_raw_parts(blocks_ffi, blocks_ffi_size) };
+//        let mut block_headers: Vec<_> = Vec::with_capacity(blocks_ffi_size);
+//        for block in blocks_ffi.iter() {
+//            let ffi = &unsafe { ptr::read(block) };
+//            let r: Result<SignedBlockHeader, Error> = ffi.try_into();
+//            if r.is_err() {
+//                return generate_raw_result(false, r.unwrap_err().to_string());
+//            }
+//            block_headers.push(r.unwrap());
+//        }
+//        block_headers
+//    };
+
+//    let mut ids_lists: Vec<Vec<Checksum256>>= Vec::with_capacity(15);
+//    ids_lists.push(Vec::new());
+//    let ids_list_ffi = &unsafe { slice::from_raw_parts(ids_list, ids_list_size) };
+//    for ids in ids_list_ffi.iter().skip(1) { // skip first ids due to it's am empty list(null pointer)
+//        let r: Result<Vec<Checksum256>, _> = ids.try_into();
+//        if r.is_err() {
+//            return generate_raw_result(false, r.unwrap_err().to_string());
+//        }
+//        ids_lists.push(r.unwrap());
+//    }
 
     let result = futures::executor::block_on(async move {
         crate::rpc_calls::change_schedule_call(

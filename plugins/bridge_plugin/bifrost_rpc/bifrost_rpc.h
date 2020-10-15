@@ -35,10 +35,10 @@ eosio::rpc_result *change_schedule(
    const char                                   *signer,
    const eosio::digest_type                     legacy_schedule_hash,
    const char                                   *schedule,
-   const eosio::incremental_merkle_ffi          *imcre_merkle,
-   const eosio::signed_block_header_ffi         *blocks_ffi,
+   const char                                   *imcre_merkle,
+   const char                                   *blocks_ffi,
    size_t                                       blocks_ffi_size,
-   const eosio::block_id_type_list              *ids_list,
+   const char                                   *ids_list,
    size_t                                       ids_list_size
 );
 

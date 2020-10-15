@@ -617,7 +617,7 @@ checksum = "516aa8d7a71cb00a1c4146f0798549b93d083d4f189b3ced8f3de6b8f11ee6c4"
 [[package]]
 name = "eos-chain"
 version = "0.1.0"
-source = "git+https://github.com/bifrost-finance/rust-eos#590fd748c46b2eb0fa64b49ab80560337aecd96c"
+source = "git+https://github.com/bifrost-finance/rust-eos#9c664d0bf804c441ec79cff8b616d54b127c28d3"
 dependencies = [
  "bitcoin_hashes",
  "chrono",
@@ -632,7 +632,7 @@ dependencies = [
 [[package]]
 name = "eos-keys"
 version = "0.1.0"
-source = "git+https://github.com/bifrost-finance/rust-eos#590fd748c46b2eb0fa64b49ab80560337aecd96c"
+source = "git+https://github.com/bifrost-finance/rust-eos#9c664d0bf804c441ec79cff8b616d54b127c28d3"
 dependencies = [
  "bitcoin_hashes",
  "byteorder",
@@ -644,7 +644,7 @@ dependencies = [
 [[package]]
 name = "eosio-core-derive"
 version = "0.2.1"
-source = "git+https://github.com/bifrost-finance/rust-eos#590fd748c46b2eb0fa64b49ab80560337aecd96c"
+source = "git+https://github.com/bifrost-finance/rust-eos#9c664d0bf804c441ec79cff8b616d54b127c28d3"
 dependencies = [
  "proc-macro2",
  "quote",

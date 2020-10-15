@@ -206,8 +206,6 @@ namespace eosio {
 
             auto tuple = collect_incremental_merkle_and_blocks(ti);
             incremental_merkle blockroot_merkle = ti->imcre_merkle;
-//            producer_authority_schedule_ffi *new_schedule = new producer_authority_schedule_ffi(ti->schedule);
-//            ilog("new new_schedule ffi");
 
             string new_schedule = fc::json::to_pretty_string(ti->schedule);
 
@@ -220,28 +218,32 @@ namespace eosio {
                continue;
             }
 
-            signed_block_header_ffi *blocks_ffi = new signed_block_header_ffi[block_headers.size()];
-            for (size_t i = 0; i < block_headers.size(); ++i) {
-               auto p = new signed_block_header_ffi(block_headers[i]);
-               blocks_ffi[i] = *p;
-            }
+            string blocks_json = fc::json::to_pretty_string(block_headers);
+            string ids_json = fc::json::to_pretty_string(block_id_lists);
+            string mroot_json = fc::json::to_pretty_string(blockroot_merkle);
 
-            auto merkle_ptr = convert_ffi(blockroot_merkle);
+//            signed_block_header_ffi *blocks_ffi = new signed_block_header_ffi[block_headers.size()];
+//            for (size_t i = 0; i < block_headers.size(); ++i) {
+//               auto p = new signed_block_header_ffi(block_headers[i]);
+//               blocks_ffi[i] = *p;
+//            }
 
-            block_id_type_list *ids_list = new block_id_type_list[block_id_lists.size()];
-            for (size_t i = 0; i < block_id_lists.size(); ++i) {
-               ids_list[i] = convert_ffi(block_id_lists[i]);
-            }
+//            auto merkle_ptr = convert_ffi(blockroot_merkle);
+
+//            block_id_type_list *ids_list = new block_id_type_list[block_id_lists.size()];
+//            for (size_t i = 0; i < block_id_lists.size(); ++i) {
+//               ids_list[i] = convert_ffi(block_id_lists[i]);
+//            }
 
             rpc_result *result = change_schedule(
                config.bifrost_addr.data(),
                config.bifrost_signer.data(),
                ti->legacy_schedule_hash,
                new_schedule.data(),
-               &merkle_ptr,
-               blocks_ffi,
+               mroot_json.data(),
+               blocks_json.data(),
                block_headers.size(),
-               ids_list,
+               ids_json.data(),
                block_id_lists.size()
             );
 
@@ -257,8 +259,8 @@ namespace eosio {
                }
             }
 
-            if (blocks_ffi) delete []blocks_ffi;
-            if (ids_list) delete []ids_list;
+//            if (blocks_ffi) delete []blocks_ffi;
+//            if (ids_list) delete []ids_list;
          }
 
          change_schedule_timer_tick();
@@ -367,27 +369,6 @@ namespace eosio {
       if (prove_action_index.size() >= block_index_max_size) {
          if (prove_action_index.begin()->status == 2) prove_action_index.erase(prove_action_index.begin());
       }
-
-//      if (prove_action_index.size() >= block_index_max_size)
-//      {
-//         auto i = prove_action_index.get<by_status>().find(1);
-////      auto r = i.begin();
-////      auto it = prove_action_index.get<0>(i);
-//         auto it = prove_action_index.project<0>(i);
-//         for (; it != prove_action_index.end();) {
-////         ilog("all sent trx: ${to}", ("to", *it));
-//            if (it->status == 1) it = prove_action_index.erase(it);
-//            else ++it;
-//         }
-//      }
-//      auto it = prove_action_index.get<by_status>().begin();
-//      for (; it != prove_action_index.get<by_status>().end(); ) {
-//         if (it->status == 2) prove_action_index.erase(it);
-//         else ++it;
-//      }
-//      ilog("all sent trx: ${to}", ("to", ij));
-//      prove_action_index.erase(it);
-      ilog("all sent trx: ${to}", ("to", prove_action_index.size()));
 
       if (change_schedule_index.size() >= block_index_max_size && change_schedule_index.begin()->status == 2) {
          change_schedule_index.erase(change_schedule_index.begin());
