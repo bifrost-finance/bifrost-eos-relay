@@ -26,8 +26,6 @@ use std::{
 mod ffi_types;
 use ffi_types::*;
 mod rpc_calls;
-mod scheduler;
-mod db;
 
 #[derive(Clone, Debug)]
 pub enum Error {
@@ -183,33 +181,23 @@ pub extern "C" fn change_schedule(
 //        ids_lists.push(r.unwrap());
 //    }
 
-    // let result = futures::executor::block_on(async move {
-    //     crate::rpc_calls::change_schedule_call(
-    //         urls,
-    //         signer,
-    //         legacy_schedule_hash,
-    //         new_schedule,
-    //         merkle,
-    //         block_headers,
-    //         ids_lists,
-    //     ).await
-    // });
-
-    let result = crate::db::save_change_schedule_call(
-        urls,
-        signer,
-        legacy_schedule_hash,
-        new_schedule,
-        merkle,
-        block_headers,
-        ids_lists
-    );
+    let result = futures::executor::block_on(async move {
+        crate::rpc_calls::change_schedule_call(
+            urls,
+            signer,
+            legacy_schedule_hash,
+            new_schedule,
+            merkle,
+            block_headers,
+            ids_lists,
+        ).await
+    });
 
     // send and watch extrinsic until finalized
     match result {
-        Ok(schedule) => {
-            println!("[+] Transaction got save and its new schedule: {:?}\n", schedule.version);
-            generate_raw_result(true, schedule.version.to_string())
+        Ok(tx_hash) => {
+            println!("[+] Transaction got finalized and its id: {:?}\n", tx_hash);
+            generate_raw_result(true, tx_hash.to_string())
         }
         Err(e) => {
             println!("[+] Transaction got failure due to: {:?}\n", e);
@@ -319,36 +307,25 @@ pub extern "C" fn prove_action(
         signer.unwrap()
     };
 
-    // let result = futures::executor::block_on(async move {
-    //     crate::rpc_calls::prove_action_call(
-    //         urls,
-    //         signer,
-    //         action,
-    //         action_receipt,
-    //         action_merkle_paths,
-    //         merkle,
-    //         block_headers,
-    //         ids_lists,
-    //         trx_id
-    //     ).await
-    // });
-    let result = crate::db::save_prove_action_call(
-        urls,
-        signer,
-        action,
-        action_receipt,
-        action_merkle_paths,
-        merkle,
-        block_headers,
-        ids_lists,
-        trx_id
-    );
+    let result = futures::executor::block_on(async move {
+        crate::rpc_calls::prove_action_call(
+            urls,
+            signer,
+            action,
+            action_receipt,
+            action_merkle_paths,
+            merkle,
+            block_headers,
+            ids_lists,
+            trx_id
+        ).await
+    });
 
     // send and watch extrinsic until finalized
     match result {
-        Ok(action) => {
-            println!("[+] Transaction got save and its action: {:?}\n", action);
-            generate_raw_result(true, "123")
+        Ok(tx_hash) => {
+            println!("[+] Transaction got finalized and its id: {:?}\n", tx_hash);
+            generate_raw_result(true, tx_hash.to_string())
         }
         Err(e) => {
             println!("[+] Transaction got failure due to: {:?}\n", e);
